@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>NST-7</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@300;400;500;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* OpenBridge palettes — alarm semantics fixed across all (hue constant, luminance varies) */
+:root, body.night  { --bg:#0a0d14; --surface:#0f1420; --border:#18222e; --border-lo:#101820; --text:#8aa0b8; --sub:#2e3f52; --dim:#18242e; --active:#2468a8; --nominal:#186040; --warning:#906010; --alarm:#901818; }
+body.dusk   { --bg:#0d1420; --surface:#131c2c; --border:#1e2d40; --border-lo:#141e2c; --text:#a8bcd4; --sub:#3c5068; --dim:#1c2a3c; --active:#2e78cc; --nominal:#1e7850; --warning:#b07020; --alarm:#b02020; }
+body.day    { --bg:#0f1622; --surface:#171e2e; --border:#222e42; --border-lo:#161e2e; --text:#ccd8ec; --sub:#4a6080; --dim:#1e2c40; --active:#3888e8; --nominal:#259060; --warning:#d08820; --alarm:#d83030; }
+body.bright { --bg:#141c2a; --surface:#1c2638; --border:#2a3a52; --border-lo:#1a2438; --text:#e0ecf8; --sub:#6080a0; --dim:#243248; --active:#4898f8; --nominal:#28a870; --warning:#e09030; --alarm:#e83838; }
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { background: var(--bg); min-height: 100%; font-family: 'Roboto Condensed', sans-serif; color: var(--text); display: flex; justify-content: center; }
+body, #app > * { transition: background 0.7s, border-color 0.7s, color 0.7s; }
+#app { width: 375px; min-height: 100vh; display: flex; flex-direction: column; }
+
+/* ── TOPBAR ─────────────────────────────────────────────── */
+#topbar { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px 9px; border-bottom: 1px solid var(--border); }
+.sys-id { font-family: 'Roboto Mono', monospace; font-size: 11px; font-weight: 500; color: var(--sub); letter-spacing: 0.18em; text-transform: uppercase; }
+.ind-row { display: flex; gap: 5px; }
+.ind { display: flex; align-items: center; gap: 4px; padding: 3px 6px 3px 4px; border: 1px solid var(--border); background: var(--surface); }
+.ind-bar { width: 3px; height: 13px; background: var(--dim); transition: background 0.3s; }
+.ind.ok   .ind-bar { background: var(--nominal); }
+.ind.warn .ind-bar { background: var(--warning); animation: blink 1.4s infinite; }
+.ind.err  .ind-bar { background: var(--alarm);   animation: blink 0.8s infinite; }
+.ind-lbl  { font-size: 9px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--sub); transition: color 0.3s; }
+.ind.ok   .ind-lbl { color: var(--text); }
+.ind.warn .ind-lbl { color: var(--warning); }
+.ind.err  .ind-lbl { color: var(--alarm); }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+#settings-btn { background: none; border: none; cursor: pointer; color: var(--sub); padding: 4px; font-size: 14px; transition: color 0.2s; }
+#settings-btn.open, #settings-btn:hover { color: var(--text); }
+
+/* ── SYSTEM MENU ────────────────────────────────────────── */
+/*
+  OpenBridge: system-level settings behind a menu, not on primary screen.
+  Menu items follow the same instrument-panel visual language.
+*/
+#sysmenu { display: none; background: var(--surface); border-bottom: 1px solid var(--border); }
+#sysmenu.open { display: block; }
+
+.menu-section { border-bottom: 1px solid var(--border-lo); padding: 10px 14px; }
+.menu-section-label { font-size: 9px; font-weight: 700; color: var(--dim); letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 8px; }
+
+/* Palette row */
+.palette-row { display: flex; gap: 5px; }
+.p-btn { flex: 1; padding: 8px 4px; font-family: 'Roboto Condensed', sans-serif; font-size: 10px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; background: var(--bg); border: 1px solid var(--border); color: var(--sub); cursor: pointer; border-top: 2px solid transparent; transition: all 0.2s; }
+.p-btn.active { color: var(--text); border-top-color: var(--active); background: var(--surface); }
+.p-btn.auto.active { border-top-color: var(--nominal); }
+#palette-source { font-size: 9px; color: var(--dim); letter-spacing: 0.08em; margin-top: 6px; }
+
+/* Menu action buttons */
+.menu-action { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border-lo); cursor: pointer; transition: opacity 0.15s; }
+.menu-action:last-child { border-bottom: none; }
+.menu-action:active { opacity: 0.6; }
+.menu-action-label { font-size: 12px; color: var(--text); }
+.menu-action-sub   { font-size: 10px; color: var(--sub); margin-top: 2px; }
+.menu-action-arrow { font-size: 12px; color: var(--sub); }
+
+/* ── BEARING DISPLAY ────────────────────────────────────── */
+#bearing-wrap { padding: 12px 14px 6px; display: flex; flex-direction: column; align-items: center; cursor: pointer; }
+#cv { display: block; width: 347px; height: 347px; }
+#bearing-ctx { display: flex; justify-content: space-between; width: 100%; padding: 5px 14px 8px; font-family: 'Roboto Mono', monospace; font-size: 10px; color: var(--sub); letter-spacing: 0.06em; border-bottom: 1px solid var(--border-lo); }
+
+/* ── INSTRUMENTS ────────────────────────────────────────── */
+#instruments { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border-lo); border-bottom: 1px solid var(--border); }
+.instr { background: var(--bg); overflow: hidden; }
+.instr-status { height: 3px; background: var(--dim); transition: background 0.3s; }
+.instr.hi    .instr-status { background: var(--active); }
+.instr.warn  .instr-status { background: var(--warning); }
+.instr.alarm .instr-status { background: var(--alarm); }
+.instr-body  { padding: 8px 12px 10px; }
+.instr-label { font-size: 10px; font-weight: 500; color: var(--sub); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 5px; }
+.instr-val   { font-family: 'Roboto Mono', monospace; font-size: 22px; font-weight: 400; font-variant-numeric: tabular-nums; color: var(--dim); line-height: 1; transition: color 0.3s; }
+.instr.hi    .instr-val { color: var(--text); }
+.instr.warn  .instr-val { color: var(--warning); }
+.instr.alarm .instr-val { color: var(--alarm); }
+.instr-unit  { font-size: 11px; color: var(--sub); margin-left: 3px; }
+.instr-bar   { height: 2px; background: var(--border); margin-top: 8px; }
+.instr-bar-fill { height: 100%; background: var(--active); width: 0%; transition: width 0.7s ease, background 0.3s; }
+.instr.warn  .instr-bar-fill { background: var(--warning); }
+.instr.alarm .instr-bar-fill { background: var(--alarm); }
+.speed-scale { position: relative; height: 3px; background: var(--border); margin-top: 8px; }
+.speed-fill  { position: absolute; left:0; top:0; height:100%; background: var(--active); width:0%; transition: width 0.7s ease; }
+.speed-tick  { position: absolute; top: -2px; width: 1px; height: 7px; background: var(--border); }
+.speed-labels { display: flex; justify-content: space-between; margin-top: 3px; }
+.speed-labels span { font-family: 'Roboto Mono', monospace; font-size: 8px; color: var(--dim); font-variant-numeric: tabular-nums; }
+
+/* ── BANNERS ────────────────────────────────────────────── */
+#banners { display: flex; flex-direction: column; }
+.banner { display: none; border-left: 3px solid; padding: 9px 14px; align-items: baseline; gap: 10px; }
+.banner.visible { display: flex; }
+.banner.warning { border-color: var(--warning); background: #160f00; }
+.banner.nominal { border-color: var(--nominal); background: #00120a; }
+.banner-tag { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; flex: 1; }
+.banner.warning .banner-tag { color: var(--warning); }
+.banner.nominal .banner-tag { color: var(--nominal); }
+.banner-val { font-family: 'Roboto Mono', monospace; font-size: 16px; font-variant-numeric: tabular-nums; }
+.banner.warning .banner-val { color: var(--warning); }
+.banner.nominal .banner-val { color: var(--nominal); }
+
+/* ── EVENT LOG ──────────────────────────────────────────── */
+#log { padding: 9px 14px; min-height: 54px; border-bottom: 1px solid var(--border-lo); }
+.log-row { display: flex; gap: 10px; line-height: 1.75; overflow: hidden; }
+.log-ts  { font-family: 'Roboto Mono', monospace; font-size: 10px; color: var(--dim); flex-shrink: 0; font-variant-numeric: tabular-nums; padding-top: 1px; }
+.log-msg { font-size: 12px; color: var(--sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.log-row.fresh .log-ts  { color: var(--sub); }
+.log-row.fresh .log-msg { color: var(--text); }
+.log-row.empty .log-msg { color: var(--dim); font-style: italic; }
+
+/* ── VOICE PREVIEW ──────────────────────────────────────── */
+#voice { display: none; padding: 9px 14px; gap: 10px; background: var(--surface); border-bottom: 1px solid var(--border-lo); }
+#voice.visible { display: flex; }
+.voice-tag  { font-size: 9px; font-weight: 700; color: var(--active); letter-spacing: 0.15em; text-transform: uppercase; flex-shrink: 0; padding-top: 2px; }
+.voice-body { font-family: 'Roboto Mono', monospace; font-size: 11px; color: var(--text); line-height: 1.8; letter-spacing: 0.04em; }
+
+/* ── TOGGLE ─────────────────────────────────────────────── */
+#toggle-section { padding: 12px 14px 20px; }
+#toggle { width: 100%; padding: 14px; font-family: 'Roboto Condensed', sans-serif; font-size: 12px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; background: var(--surface); border: 1px solid var(--border); color: var(--text); cursor: pointer; transition: all 0.2s; }
+#toggle.running { color: var(--nominal); border-color: var(--nominal); }
+
+/* ── ONBOARDING OVERLAY ─────────────────────────────────── */
+/*
+  Shown on first activation or from Settings → Sounds & Earcons.
+  OpenBridge principle: functional, no decorative chrome.
+  Each step introduces one sound category with a live demo.
+*/
+#onboard {
+  display: none; position: fixed; inset: 0; z-index: 200;
+  background: rgba(0,0,0,0.88);
+  align-items: flex-end; justify-content: center;
+  padding-bottom: 0;
+}
+#onboard.open { display: flex; }
+
+.onboard-card {
+  width: 375px; background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding: 20px 20px 28px;
+  display: flex; flex-direction: column; gap: 16px;
+}
+
+.ob-step-indicator {
+  display: flex; gap: 5px; justify-content: center;
+}
+.ob-dot {
+  width: 20px; height: 2px; background: var(--dim); transition: background 0.3s;
+}
+.ob-dot.active { background: var(--active); }
+
+.ob-bam {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 8px 3px 5px; border: 1px solid var(--border);
+  align-self: flex-start;
+}
+.ob-bam-bar { width: 3px; height: 14px; }
+.ob-bam-bar.alarm   { background: var(--alarm); }
+.ob-bam-bar.warning { background: var(--warning); }
+.ob-bam-bar.caution { background: var(--nominal); }
+.ob-bam-bar.none    { background: var(--sub); }
+.ob-bam-lbl { font-size: 10px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: var(--sub); }
+
+.ob-title    { font-size: 16px; font-weight: 700; color: var(--text); line-height: 1.3; }
+.ob-body     { font-size: 12px; color: var(--sub); line-height: 1.7; }
+.ob-pattern  { font-family: 'Roboto Mono', monospace; font-size: 11px; color: var(--active); letter-spacing: 0.06em; }
+
+.ob-play-btn {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; background: var(--bg);
+  border: 1px solid var(--border); cursor: pointer;
+  font-family: 'Roboto Condensed', sans-serif; font-size: 11px; font-weight: 500;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--sub);
+  transition: all 0.15s; align-self: flex-start;
+}
+.ob-play-btn:hover { color: var(--text); border-color: var(--active); }
+.ob-play-btn.playing { color: var(--active); border-color: var(--active); }
+.ob-play-icon { font-size: 10px; }
+
+.ob-nav {
+  display: flex; justify-content: space-between; align-items: center;
+  padding-top: 4px; border-top: 1px solid var(--border-lo);
+}
+.ob-btn {
+  padding: 10px 20px; background: none;
+  border: 1px solid var(--border); cursor: pointer;
+  font-family: 'Roboto Condensed', sans-serif; font-size: 11px; font-weight: 500;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--sub); transition: all 0.15s;
+}
+.ob-btn.primary { color: var(--text); border-color: var(--active); }
+.ob-btn.primary:active { background: var(--surface); }
+.ob-skip { font-size: 10px; color: var(--dim); cursor: pointer; letter-spacing: 0.08em; text-decoration: underline; text-underline-offset: 3px; }
+
+/* ── EARCON LIST (in system menu) ───────────────────────── */
+/*
+  Accessible from Settings → Sounds & Earcons.
+  Each row follows instrument-panel visual language:
+  3px left border (BAM color) + name + trigger + play button.
+*/
+#earcon-list { display: none; }
+#earcon-list.open { display: block; }
+
+.earcon-group { border-bottom: 1px solid var(--border-lo); }
+.earcon-group-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 14px; background: var(--bg);
+}
+.eg-bar { width: 3px; height: 14px; flex-shrink: 0; }
+.eg-bar.alarm   { background: var(--alarm); }
+.eg-bar.warning { background: var(--warning); }
+.eg-bar.caution { background: var(--nominal); }
+.eg-label { font-size: 9px; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; }
+.eg-label.alarm   { color: var(--alarm); }
+.eg-label.warning { color: var(--warning); }
+.eg-label.caution { color: var(--nominal); }
+.eg-desc { font-size: 9px; color: var(--dim); margin-left: auto; letter-spacing: 0.06em; }
+
+.earcon-row {
+  display: flex; align-items: center; gap: 0;
+  padding: 0; border-top: 1px solid var(--border-lo);
+  border-left: 3px solid transparent;
+  background: var(--bg); transition: border-left-color 0.2s;
+}
+.earcon-row.alarm   { border-left-color: var(--alarm); }
+.earcon-row.warning { border-left-color: var(--warning); }
+.earcon-row.caution { border-left-color: var(--nominal); }
+
+.earcon-info { flex: 1; padding: 9px 10px 9px 10px; }
+.earcon-name    { font-size: 12px; color: var(--text); }
+.earcon-trigger { font-size: 10px; color: var(--sub); margin-top: 2px; letter-spacing: 0.04em; }
+.earcon-pattern { font-family: 'Roboto Mono', monospace; font-size: 9px; color: var(--dim); margin-top: 3px; }
+
+.earcon-play {
+  flex-shrink: 0; width: 44px; height: 100%; min-height: 52px;
+  background: none; border: none; border-left: 1px solid var(--border-lo);
+  cursor: pointer; color: var(--sub); font-size: 12px;
+  display: flex; align-items: center; justify-content: center;
+  transition: color 0.15s, background 0.15s;
+}
+.earcon-play:hover   { color: var(--text); background: var(--surface); }
+.earcon-play.playing { color: var(--active); }
+</style>
+</head>
+<body class="night">
+<div id="app">
+
+  <!-- TOPBAR -->
+  <div id="topbar">
+    <span class="sys-id">NST-7</span>
+    <div class="ind-row">
+      <div class="ind" id="ind-gps">  <div class="ind-bar"></div><span class="ind-lbl">GPS</span></div>
+      <div class="ind" id="ind-mag">  <div class="ind-bar"></div><span class="ind-lbl">Mag</span></div>
+      <div class="ind" id="ind-audio"><div class="ind-bar"></div><span class="ind-lbl">Audio</span></div>
+    </div>
+    <button id="settings-btn" onclick="toggleMenu()">⚙</button>
+  </div>
+
+  <!-- SYSTEM MENU -->
+  <div id="sysmenu">
+    <!-- Display palette -->
+    <div class="menu-section">
+      <div class="menu-section-label">Display palette</div>
+      <div class="palette-row">
+        <button class="p-btn auto" id="pb-auto"   onclick="setPalette('auto')">Auto</button>
+        <button class="p-btn"      id="pb-bright" onclick="setPalette('bright')">Bright</button>
+        <button class="p-btn"      id="pb-day"    onclick="setPalette('day')">Day</button>
+        <button class="p-btn"      id="pb-dusk"   onclick="setPalette('dusk')">Dusk</button>
+        <button class="p-btn"      id="pb-night"  onclick="setPalette('night')">Night</button>
+      </div>
+      <div id="palette-source"></div>
+    </div>
+
+    <!-- Sound & Earcons entry point -->
+    <div class="menu-section">
+      <div class="menu-section-label">Sounds</div>
+      <div class="menu-action" onclick="toggleEarconList()">
+        <div>
+          <div class="menu-action-label">Sounds & Earcons</div>
+          <div class="menu-action-sub">BAM alert hierarchy · all sound patterns</div>
+        </div>
+        <span class="menu-action-arrow" id="earcon-arrow">›</span>
+      </div>
+      <div id="earcon-list"></div>
+
+      <div class="menu-action" onclick="openOnboarding()">
+        <div>
+          <div class="menu-action-label">Onboarding</div>
+          <div class="menu-action-sub">Replay the sound introduction</div>
+        </div>
+        <span class="menu-action-arrow">›</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- BEARING DISPLAY (North-up always) -->
+  <div id="bearing-wrap" onclick="handleBearingTap()">
+    <canvas id="cv" width="694" height="694"></canvas>
+  </div>
+  <div id="bearing-ctx">
+    <span id="ctx-objects">—  objects overhead</span>
+    <span id="ctx-heading">Heading —°</span>
+  </div>
+
+  <!-- INSTRUMENTS -->
+  <div id="instruments">
+    <div class="instr" id="i-mag">
+      <div class="instr-status"></div>
+      <div class="instr-body">
+        <div class="instr-label">Magnetometer</div>
+        <div class="instr-val" id="v-mag">—<span class="instr-unit">µT</span></div>
+        <div class="instr-bar"><div class="instr-bar-fill" id="b-mag"></div></div>
+      </div>
+    </div>
+    <div class="instr" id="i-baro">
+      <div class="instr-status"></div>
+      <div class="instr-body">
+        <div class="instr-label">Barometer</div>
+        <div class="instr-val" id="v-baro">—<span class="instr-unit">hPa</span></div>
+        <div class="instr-bar"><div class="instr-bar-fill" id="b-baro"></div></div>
+      </div>
+    </div>
+    <div class="instr" id="i-motion">
+      <div class="instr-status"></div>
+      <div class="instr-body">
+        <div class="instr-label">Motion</div>
+        <div class="instr-val" id="v-motion">—<span class="instr-unit">m/s²</span></div>
+        <div class="instr-bar"><div class="instr-bar-fill" id="b-motion"></div></div>
+      </div>
+    </div>
+    <div class="instr" id="i-speed">
+      <div class="instr-status"></div>
+      <div class="instr-body">
+        <div class="instr-label">Speed</div>
+        <div class="instr-val" id="v-speed">—<span class="instr-unit">km/h</span></div>
+        <div class="speed-scale">
+          <div class="speed-fill" id="b-speed"></div>
+          <div class="speed-tick" style="left:18.75%"></div>
+          <div class="speed-tick" style="left:37.5%"></div>
+          <div class="speed-tick" style="left:62.5%"></div>
+          <div class="speed-tick" style="left:87.5%"></div>
+        </div>
+        <div class="speed-labels">
+          <span>0</span><span>15</span><span>30</span><span>50</span><span>70</span><span>80</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BANNERS -->
+  <div id="banners">
+    <div class="banner warning" id="b-kp"><span class="banner-tag">Geomagnetic storm</span><span class="banner-val" id="bv-kp">Kp 0</span></div>
+    <div class="banner nominal" id="b-alt"><span class="banner-tag">Floor change</span><span class="banner-val" id="bv-alt">+0.0 m</span></div>
+  </div>
+
+  <!-- EVENT LOG -->
+  <div id="log">
+    <div class="log-row empty" id="log0"><span class="log-ts">—</span><span class="log-msg">Waiting for activation</span></div>
+    <div class="log-row"       id="log1"><span class="log-ts"></span><span class="log-msg"></span></div>
+  </div>
+
+  <!-- VOICE PREVIEW -->
+  <div id="voice">
+    <span class="voice-tag">Voice</span>
+    <div class="voice-body" id="voice-text"></div>
+  </div>
+
+  <!-- START/STOP -->
+  <div id="toggle-section">
+    <button id="toggle" onclick="toggle()">Start</button>
+  </div>
+</div>
+
+<!-- ONBOARDING OVERLAY -->
+<div id="onboard">
+  <div class="onboard-card">
+    <div class="ob-step-indicator" id="ob-dots"></div>
+    <div id="ob-bam" class="ob-bam"><div class="ob-bam-bar none" id="ob-bam-bar"></div><span class="ob-bam-lbl" id="ob-bam-lbl"></span></div>
+    <div class="ob-title" id="ob-title"></div>
+    <div class="ob-body"  id="ob-body"></div>
+    <div class="ob-pattern" id="ob-pattern"></div>
+    <button class="ob-play-btn" id="ob-play" onclick="obPlay()">
+      <span class="ob-play-icon">▶</span>
+      <span id="ob-play-label">Hear this sound</span>
+    </button>
+    <div class="ob-nav">
+      <button class="ob-btn" id="ob-back" onclick="obStep(-1)">Back</button>
+      <span class="ob-skip" onclick="closeOnboarding()">Skip</span>
+      <button class="ob-btn primary" id="ob-next" onclick="obStep(1)">Next</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── STATE ───────────────────────────────────────────────
+let running = false, driftIv = null, voiceTimer = null, logSeq = 0;
+const S = { mag: 0, baro: 0, motion: 0, speed: 0 };
+const objects = [];
+let simHeading = 47;
+
+// ─── PALETTE ─────────────────────────────────────────────
+const PALETTES = ['auto','bright','day','dusk','night'];
+let curMode = 'auto', activePal = 'night', autoIv = null;
+
+function paletteFromHour(h) {
+  if (h >= 11 && h < 15) return 'bright';
+  if ((h >= 8 && h < 11) || (h >= 15 && h < 18)) return 'day';
+  if ((h >= 6 && h <  8) || (h >= 18 && h < 20)) return 'dusk';
+  return 'night';
+}
+function applyPalette(name) {
+  if (name === activePal) return;
+  activePal = name; document.body.className = name;
+}
+function updatePalSrc() {
+  const h = new Date().getHours();
+  document.getElementById('palette-source').textContent = curMode === 'auto'
+    ? `Auto — time of day ${String(h).padStart(2,'0')}:xx · ${activePal}`
+    : `Manual — ${curMode}`;
+}
+function setPalette(mode) {
+  curMode = mode;
+  PALETTES.forEach(n => document.getElementById('pb-' + n).classList.toggle('active', n === mode));
+  clearInterval(autoIv);
+  if (mode === 'auto') {
+    applyPalette(paletteFromHour(new Date().getHours()));
+    autoIv = setInterval(() => { applyPalette(paletteFromHour(new Date().getHours())); updatePalSrc(); }, 60000);
+  } else { applyPalette(mode); }
+  updatePalSrc();
+}
+
+// ─── SYSTEM MENU ─────────────────────────────────────────
+function toggleMenu() {
+  const m = document.getElementById('sysmenu');
+  const b = document.getElementById('settings-btn');
+  const open = m.classList.toggle('open');
+  b.classList.toggle('open', open);
+}
+
+// ─── AUDIO ENGINE (Web Audio API) ────────────────────────
+/*
+  Real tones for onboarding and earcon preview.
+  Each sound is self-contained: AudioContext created per play,
+  nodes disposed after playback.
+*/
+function playPings(freq, count, cb) {
+  const actx = new (window.AudioContext || window.webkitAudioContext)();
+  const D = 0.25, G = 0.22;
+  for (let i = 0; i < count; i++) {
+    const osc = actx.createOscillator();
+    const env = actx.createGain();
+    const bpf = actx.createBiquadFilter();
+    bpf.type = 'bandpass'; bpf.frequency.value = 1200; bpf.Q.value = 0.7;
+    osc.type = 'sine'; osc.frequency.value = freq;
+    const t = actx.currentTime + i * (D + G);
+    env.gain.setValueAtTime(0, t);
+    env.gain.linearRampToValueAtTime(0.5, t + 0.007);
+    env.gain.exponentialRampToValueAtTime(0.001, t + D);
+    osc.connect(bpf); bpf.connect(env); env.connect(actx.destination);
+    osc.start(t); osc.stop(t + D + 0.05);
+  }
+  const total = (count * (D + G)) * 1000 + 150;
+  if (cb) setTimeout(cb, total);
+  return total;
+}
+
+function playGlissando(startFreq, endFreq) {
+  const actx = new (window.AudioContext || window.webkitAudioContext)();
+  const osc  = actx.createOscillator();
+  const env  = actx.createGain();
+  osc.type = 'sine'; osc.frequency.setValueAtTime(startFreq, actx.currentTime);
+  osc.frequency.linearRampToValueAtTime(endFreq, actx.currentTime + 1.5);
+  env.gain.setValueAtTime(0, actx.currentTime);
+  env.gain.linearRampToValueAtTime(0.4, actx.currentTime + 0.01);
+  env.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 1.5);
+  osc.connect(env); env.connect(actx.destination);
+  osc.start(); osc.stop(actx.currentTime + 1.6);
+}
+
+function playCarrier() {
+  const actx = new (window.AudioContext || window.webkitAudioContext)();
+  const osc  = actx.createOscillator();
+  const env  = actx.createGain();
+  osc.type = 'sine'; osc.frequency.value = 58;
+  env.gain.setValueAtTime(0, actx.currentTime);
+  env.gain.linearRampToValueAtTime(0.35, actx.currentTime + 0.5);
+  env.gain.setValueAtTime(0.35, actx.currentTime + 2.5);
+  env.gain.linearRampToValueAtTime(0, actx.currentTime + 3.5);
+  osc.connect(env); env.connect(actx.destination);
+  osc.start(); osc.stop(actx.currentTime + 3.6);
+}
+
+function playNST() {
+  const actx = new (window.AudioContext || window.webkitAudioContext)();
+  const seq  = [440, 293, 220, 329, 0, 262]; // A4, D4, A3, E4, pause, C4
+  seq.forEach((freq, i) => {
+    if (!freq) return;
+    const osc  = actx.createOscillator();
+    const env  = actx.createGain();
+    const bpf  = actx.createBiquadFilter();
+    bpf.type = 'bandpass'; bpf.frequency.value = 1200; bpf.Q.value = 0.8;
+    osc.type = 'sine'; osc.frequency.value = freq;
+    const t = actx.currentTime + i * 0.42;
+    env.gain.setValueAtTime(0, t);
+    env.gain.linearRampToValueAtTime(0.4, t + 0.008);
+    env.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+    osc.connect(bpf); bpf.connect(env); env.connect(actx.destination);
+    osc.start(t); osc.stop(t + 0.22);
+  });
+}
+
+// ─── EARCON DATA ─────────────────────────────────────────
+const EARCONS = [
+  {
+    level: 'alarm',
+    label: 'Alarm',
+    desc: '3 signals · repeat 7–10s',
+    items: [
+      { name: 'Magnetic anomaly',     trigger: 'Field deviation > 40 µT',    pattern: '3 × 880 Hz',             play: () => playPings(880, 3) },
+      { name: 'ISS overhead',         trigger: 'Elevation > 10°',            pattern: '3 × 660 Hz + tone',      play: () => playPings(660, 3) },
+      { name: 'Tiangong overhead',    trigger: 'Elevation > 10°',            pattern: '3 × 528 Hz + tone',      play: () => playPings(528, 3) },
+      { name: 'Geomagnetic storm',    trigger: 'Kp index > 4',               pattern: '3 × 880 Hz',             play: () => playPings(880, 3) },
+    ]
+  },
+  {
+    level: 'warning',
+    label: 'Warning',
+    desc: '2 signals · repeat 15s–5min',
+    items: [
+      { name: 'Magnetic activity',    trigger: 'Field deviation 15–40 µT',   pattern: '2 × 660 Hz',             play: () => playPings(660, 2) },
+      { name: 'Floor change',         trigger: 'Altitude change > 1.5m',     pattern: '2 × 660 Hz + glissando', play: () => { playPings(660, 2, () => playGlissando(700, 900)); } },
+      { name: 'Aircraft overhead',    trigger: 'Elevation > 45°',            pattern: '2 × 660 Hz + tone',      play: () => playPings(660, 2) },
+      { name: 'Hubble overhead',      trigger: 'Elevation > 10°',            pattern: '2 × 741 Hz',             play: () => playPings(741, 2) },
+      { name: 'Starlink cluster',     trigger: '≥ 3 satellites, 2 min',      pattern: '2 × 880 Hz + sequence',  play: () => playPings(880, 2) },
+    ]
+  },
+  {
+    level: 'caution',
+    label: 'Caution',
+    desc: 'No trigger — ambient only',
+    items: [
+      { name: 'Carrier tone',         trigger: 'Always active',              pattern: '58–64 Hz continuous',    play: () => playCarrier() },
+      { name: 'NST sequence',         trigger: 'Every 22–50 seconds',        pattern: '3–5 tones, radio filter', play: () => playNST() },
+      { name: 'Speed pulse',          trigger: 'Moving',                     pattern: '50 Hz, rate ∝ km/h',     play: () => playCarrier() },
+      { name: 'Voyager 1',            trigger: 'Always active',              pattern: '111 Hz, –55 dB',         play: () => playCarrier() },
+    ]
+  }
+];
+
+// ─── BUILD EARCON LIST ───────────────────────────────────
+function buildEarconList() {
+  const container = document.getElementById('earcon-list');
+  container.innerHTML = EARCONS.map(group => `
+    <div class="earcon-group">
+      <div class="earcon-group-header">
+        <div class="eg-bar ${group.level}"></div>
+        <span class="eg-label ${group.level}">${group.label}</span>
+        <span class="eg-desc">${group.desc}</span>
+      </div>
+      ${group.items.map((item, idx) => `
+        <div class="earcon-row ${group.level}">
+          <div class="earcon-info">
+            <div class="earcon-name">${item.name}</div>
+            <div class="earcon-trigger">${item.trigger}</div>
+            <div class="earcon-pattern">${item.pattern}</div>
+          </div>
+          <button class="earcon-play" onclick="playEarcon(${EARCONS.indexOf(group)},${idx},this)" title="Play sound">▶</button>
+        </div>
+      `).join('')}
+    </div>
+  `).join('');
+}
+
+function playEarcon(groupIdx, itemIdx, btn) {
+  document.querySelectorAll('.earcon-play').forEach(b => b.classList.remove('playing'));
+  btn.classList.add('playing');
+  EARCONS[groupIdx].items[itemIdx].play();
+  setTimeout(() => btn.classList.remove('playing'), 2500);
+}
+
+function toggleEarconList() {
+  const el  = document.getElementById('earcon-list');
+  const arr = document.getElementById('earcon-arrow');
+  const open = el.classList.toggle('open');
+  arr.textContent = open ? '∨' : '›';
+  if (open && !el.innerHTML) buildEarconList();
+}
+
+// ─── ONBOARDING ──────────────────────────────────────────
+/*
+  6 steps introducing the sound hierarchy.
+  IEC BAM: alarm = 3 signals, warning = 2 signals, caution = no signal.
+  Each step has a live demo via Web Audio.
+*/
+const OB_STEPS = [
+  {
+    bam: 'none', bamLabel: 'Introduction',
+    title: 'Environmental sound system',
+    body: 'This app translates sensor data and orbital positions into ambient sound. Each type of event has a distinct sound pattern based on the IEC Bridge Alert Management standard.',
+    pattern: '',
+    play: null,
+    playLabel: 'No sound — tap next'
+  },
+  {
+    bam: 'alarm', bamLabel: 'Alarm',
+    title: 'Three signals',
+    body: 'Three short pings indicate an event requiring attention — strong magnetic field anomaly, space station overhead, or a geomagnetic storm. Repeated every 7–10 seconds until acknowledged.',
+    pattern: '● ● ●   ● ● ●',
+    play: () => playPings(880, 3),
+    playLabel: 'Hear alarm sound'
+  },
+  {
+    bam: 'warning', bamLabel: 'Warning',
+    title: 'Two signals',
+    body: 'Two short pings indicate a noteworthy event — a floor change, aircraft overhead, or moderate magnetic activity. Repeated at longer intervals.',
+    pattern: '● ●   ● ●',
+    play: () => playPings(660, 2),
+    playLabel: 'Hear warning sound'
+  },
+  {
+    bam: 'caution', bamLabel: 'Caution',
+    title: 'No signal — continuous',
+    body: 'Most sensor data modulates the ambient sound layers continuously without triggering a ping. Magnetometer, speed, barometer trend, and atmospheric tone all change the background texture.',
+    pattern: '~ continuous modulation ~',
+    play: () => playCarrier(),
+    playLabel: 'Hear ambient carrier'
+  },
+  {
+    bam: 'none', bamLabel: 'Voice',
+    title: 'NATO phonetic announcements',
+    body: 'Significant events are announced using the NATO phonetic alphabet. Aircraft are announced in the language of the destination airport — Air France to Paris speaks French, JAL to Tokyo speaks Japanese.',
+    pattern: '"India Sierra Sierra... bearing... zero niner five"',
+    play: null,
+    playLabel: 'Voice uses ElevenLabs'
+  },
+  {
+    bam: 'none', bamLabel: 'Ready',
+    title: 'Sounds become familiar through use',
+    body: 'You do not need to memorise these patterns. Research shows ~80% identification accuracy after 5 minutes of natural exposure. You can review all sounds at any time in Settings → Sounds & Earcons.',
+    pattern: '',
+    play: null,
+    playLabel: 'All done'
+  }
+];
+
+let obIdx = 0;
+
+function openOnboarding() {
+  if (document.getElementById('sysmenu').classList.contains('open')) toggleMenu();
+  obIdx = 0;
+  renderObStep();
+  document.getElementById('onboard').classList.add('open');
+}
+function closeOnboarding() {
+  document.getElementById('onboard').classList.remove('open');
+}
+function renderObStep() {
+  const s = OB_STEPS[obIdx];
+  const N = OB_STEPS.length;
+
+  // Dots
+  document.getElementById('ob-dots').innerHTML = OB_STEPS.map((_,i) =>
+    `<div class="ob-dot ${i === obIdx ? 'active' : ''}"></div>`).join('');
+
+  // BAM badge
+  const bar = document.getElementById('ob-bam-bar');
+  const lbl = document.getElementById('ob-bam-lbl');
+  bar.className = 'ob-bam-bar ' + (s.bam || 'none');
+  lbl.textContent = s.bamLabel;
+  document.getElementById('ob-bam').style.display = s.bamLabel ? 'inline-flex' : 'none';
+
+  // Content
+  document.getElementById('ob-title').textContent   = s.title;
+  document.getElementById('ob-body').textContent    = s.body;
+  document.getElementById('ob-pattern').textContent = s.pattern;
+
+  // Play button
+  const playBtn = document.getElementById('ob-play');
+  const playLbl = document.getElementById('ob-play-label');
+  playLbl.textContent = s.playLabel;
+  playBtn.style.display = s.play ? 'flex' : 'none';
+
+  // Nav
+  document.getElementById('ob-back').style.visibility = obIdx === 0 ? 'hidden' : 'visible';
+  const nextBtn = document.getElementById('ob-next');
+  nextBtn.textContent = obIdx === N - 1 ? 'Done' : 'Next';
+}
+function obStep(dir) {
+  obIdx += dir;
+  if (obIdx < 0) obIdx = 0;
+  if (obIdx >= OB_STEPS.length) { closeOnboarding(); return; }
+  renderObStep();
+}
+function obPlay() {
+  const s = OB_STEPS[obIdx];
+  if (!s.play) return;
+  const btn = document.getElementById('ob-play');
+  btn.classList.add('playing');
+  s.play();
+  setTimeout(() => btn.classList.remove('playing'), 2500);
+}
+
+// ─── CANVAS ──────────────────────────────────────────────
+const CV = document.getElementById('cv');
+const CTX = CV.getContext('2d');
+CTX.scale(2, 2);
+const W = 347, CX = W/2, CY = W/2, R = W * 0.40;
+
+function cssVar(n) { return getComputedStyle(document.body).getPropertyValue(n).trim(); }
+
+function draw() {
+  const C = { bg:'#090c13', ring:cssVar('--border'), dim:cssVar('--dim'), sub:cssVar('--sub'), text:cssVar('--text'), active:cssVar('--active') };
+  CTX.clearRect(0,0,W,W);
+  CTX.fillStyle = C.bg; CTX.beginPath(); CTX.arc(CX,CY,R+2,0,Math.PI*2); CTX.fill();
+
+  [60,30].forEach(elev => {
+    const r = R*(1-elev/90);
+    CTX.beginPath(); CTX.arc(CX,CY,r,0,Math.PI*2); CTX.strokeStyle=C.ring; CTX.lineWidth=1; CTX.stroke();
+    CTX.fillStyle=C.dim; CTX.font='9px Roboto Condensed'; CTX.textAlign='left'; CTX.textBaseline='middle';
+    CTX.fillText(elev+'°', CX+r+3, CY-5);
+  });
+  for (let d=0; d<360; d+=10) {
+    const rad=(d-90)*Math.PI/180, major=d%30===0;
+    CTX.beginPath(); CTX.moveTo(CX+Math.cos(rad)*(major?R*.91:R*.95),CY+Math.sin(rad)*(major?R*.91:R*.95));
+    CTX.lineTo(CX+Math.cos(rad)*R,CY+Math.sin(rad)*R);
+    CTX.strokeStyle=major?C.ring:C.dim; CTX.lineWidth=major?1:0.5; CTX.stroke();
+  }
+  CTX.textAlign='center'; CTX.textBaseline='middle';
+  for (let d=0; d<360; d+=30) {
+    if (d%90===0) continue;
+    const rad=(d-90)*Math.PI/180; CTX.fillStyle=C.dim; CTX.font='9px Roboto Condensed';
+    CTX.fillText(String(d), CX+Math.cos(rad)*(R+13), CY+Math.sin(rad)*(R+13));
+  }
+  [['N',0,true],['E',90,false],['S',180,false],['W',270,false]].forEach(([l,d,p])=>{
+    const rad=(d-90)*Math.PI/180; CTX.fillStyle=p?C.text:C.sub; CTX.font=(p?'700 12px':'500 11px')+' Roboto Condensed';
+    CTX.fillText(l, CX+Math.cos(rad)*(R+13), CY+Math.sin(rad)*(R+13));
+  });
+  if (running) {
+    const hr=(simHeading-90)*Math.PI/180, hx=CX+Math.cos(hr)*(R-6), hy=CY+Math.sin(hr)*(R-6);
+    CTX.save(); CTX.translate(hx,hy); CTX.rotate(hr+Math.PI/2);
+    CTX.beginPath(); CTX.moveTo(0,-5); CTX.lineTo(3.5,3); CTX.lineTo(-3.5,3); CTX.closePath();
+    CTX.fillStyle=C.active; CTX.fill(); CTX.restore();
+  }
+  const now=Date.now();
+  for (let i=objects.length-1;i>=0;i--) {
+    const o=objects[i]; if (o.expires&&now>o.expires){objects.splice(i,1);continue;}
+    const rad=(o.bearing-90)*Math.PI/180, dist=R*(1-Math.max(0,Math.min(90,o.elevation))/90);
+    const x=CX+Math.cos(rad)*dist, y=CY+Math.sin(rad)*dist;
+    const col=o.type==='satellite'?C.active:C.text;
+    CTX.beginPath(); CTX.arc(x,y,4,0,Math.PI*2); CTX.fillStyle=col; CTX.fill();
+    CTX.beginPath(); CTX.arc(x,y,9,0,Math.PI*2); CTX.strokeStyle=col+'50'; CTX.lineWidth=1; CTX.stroke();
+    if (o.label){ CTX.font='500 10px Roboto Condensed'; CTX.fillStyle=col; CTX.textAlign=x>CX?'left':'right'; CTX.textBaseline='middle'; CTX.fillText(o.label,x+(x>CX?14:-14),y); }
+  }
+  CTX.textAlign='center'; CTX.textBaseline='middle';
+  if (!running) { CTX.fillStyle=C.dim; CTX.font='400 11px Roboto Condensed'; CTX.fillText('TAP TO ACTIVATE',CX,CY+50); }
+  else if (!objects.length) { CTX.fillStyle=C.dim; CTX.font='400 11px Roboto Condensed'; CTX.fillText('NO OBJECTS OVERHEAD',CX,CY); }
+  CTX.beginPath(); CTX.arc(CX,CY,2,0,Math.PI*2); CTX.fillStyle=running?C.active:C.dim; CTX.fill();
+  CTX.beginPath(); CTX.arc(CX,CY,R,0,Math.PI*2); CTX.strokeStyle=C.ring; CTX.lineWidth=1; CTX.stroke();
+}
+(function loop(){ draw(); requestAnimationFrame(loop); })();
+
+function updateCtx() {
+  const n=objects.filter(o=>!o.expires||Date.now()<o.expires).length;
+  document.getElementById('ctx-objects').textContent=n+(n===1?' object overhead':' objects overhead');
+  document.getElementById('ctx-heading').textContent=running?'Heading '+String(Math.round(simHeading)).padStart(3,'0')+'°':'Heading —°';
+  if (running) simHeading=(simHeading+(Math.random()-0.5)*1.5+360)%360;
+}
+setInterval(updateCtx, 1500);
+
+// ─── TOGGLE ──────────────────────────────────────────────
+let firstActivation = true;
+
+function handleBearingTap() {
+  if (document.getElementById('sysmenu').classList.contains('open')) { toggleMenu(); return; }
+  toggle();
+}
+
+function toggle() {
+  running = !running;
+  ['ind-gps','ind-mag','ind-audio'].forEach(id => setInd(id, running ? 'ok' : ''));
+  const btn = document.getElementById('toggle');
+  btn.textContent = running ? 'Stop' : 'Start';
+  btn.className = running ? 'running' : '';
+  if (running) {
+    addLog('Systems online');
+    driftIv = setInterval(drift, 900);
+    setInstr('mag',0.28,'42','µT'); setInstr('baro',0.55,'1013.2','hPa');
+    setInstr('motion',0.42,'8.2','m/s²'); setSpeed(5);
+    if (firstActivation) { firstActivation = false; setTimeout(openOnboarding, 600); }
+  } else {
+    clearInterval(driftIv); addLog('Systems offline');
+    ['mag','baro','motion'].forEach(clearInstr); clearSpeed();
+    objects.length=0; hideBanner('b-kp'); hideBanner('b-alt'); hideVoice();
+  }
+}
+
+// ─── INSTRUMENTS ─────────────────────────────────────────
+function setInstr(id,pct,val,unit) {
+  S[id]=pct; const st=pct>.85?'alarm':pct>.70?'warn':pct>.15?'hi':'';
+  document.getElementById('i-'+id).className='instr '+st;
+  document.getElementById('v-'+id).innerHTML=val+`<span class="instr-unit">${unit}</span>`;
+  document.getElementById('b-'+id).style.width=(pct*100).toFixed(0)+'%';
+}
+function clearInstr(id) {
+  document.getElementById('i-'+id).className='instr';
+  document.getElementById('v-'+id).innerHTML=`—<span class="instr-unit"></span>`;
+  document.getElementById('b-'+id).style.width='0%';
+}
+function setSpeed(kmh) {
+  S.speed=kmh/80; const st=kmh>50?'warn':kmh>1?'hi':'';
+  document.getElementById('i-speed').className='instr '+st;
+  document.getElementById('v-speed').innerHTML=kmh.toFixed(0)+'<span class="instr-unit">km/h</span>';
+  document.getElementById('b-speed').style.width=Math.min(100,kmh/80*100).toFixed(1)+'%';
+}
+function clearSpeed() { S.speed=0; document.getElementById('i-speed').className='instr'; document.getElementById('v-speed').innerHTML='—<span class="instr-unit">km/h</span>'; document.getElementById('b-speed').style.width='0%'; }
+function drift() {
+  const d=(v,lo,hi,a)=>Math.max(lo,Math.min(hi,v+(Math.random()-.5)*a));
+  const m=d(S.mag,.12,.68,.07), t=d(S.motion,.12,.72,.09), s=d(S.speed*80,0,80,3);
+  setInstr('mag',m,(m*65+28).toFixed(0),'µT'); setInstr('baro',.54,(1013+(Math.random()-.5)*.3).toFixed(1),'hPa');
+  setInstr('motion',t,(t*18).toFixed(1),'m/s²'); setSpeed(s);
+}
+
+// ─── UI HELPERS ──────────────────────────────────────────
+function setInd(id,cls) { document.getElementById(id).className='ind'+(cls?' '+cls:''); }
+function ts() { return new Date().toTimeString().slice(0,8); }
+function addLog(msg) {
+  const a=document.getElementById('log'+(logSeq%2)), b=document.getElementById('log'+((logSeq+1)%2));
+  a.querySelector('.log-ts').textContent=ts(); a.querySelector('.log-msg').textContent=msg;
+  a.className='log-row fresh'; b.className='log-row'; logSeq++;
+}
+function showBanner(id,val) {
+  const t=id==='b-alt'?'nominal':'warning';
+  document.getElementById(id).className='banner '+t+' visible';
+  document.getElementById(id==='b-kp'?'bv-kp':'bv-alt').textContent=val;
+  if (id==='b-kp') setInd('ind-gps','warn');
+}
+function hideBanner(id) { document.getElementById(id).className='banner '+(id==='b-alt'?'nominal':'warning'); if(id==='b-kp'&&running)setInd('ind-gps','ok'); }
+function showVoice(text) { document.getElementById('voice-text').textContent=text; document.getElementById('voice').className='visible'; clearTimeout(voiceTimer); voiceTimer=setTimeout(()=>document.getElementById('voice').className='',6000); }
+function hideVoice() { document.getElementById('voice').className=''; }
+function addObject(id,bearing,elevation,type,label,ms) {
+  const idx=objects.findIndex(o=>o.id===id); if(idx>=0)objects.splice(idx,1);
+  objects.push({id,bearing,elevation,type,label,expires:ms?Date.now()+ms:null});
+}
+
+// ─── INIT ────────────────────────────────────────────────
+setPalette('auto');
+</script>
+</body>
+</html>
