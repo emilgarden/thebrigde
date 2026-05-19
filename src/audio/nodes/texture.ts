@@ -18,12 +18,6 @@ import {
   AudioBufferSourceNode,
   GainNode,
 } from 'react-native-audio-api';
-import {
-  RampState,
-  commitRamp,
-  currentRampValue,
-  makeRamp,
-} from '../ramp';
 
 const TEXTURE_GAIN_BASE = 0.0056; // -45 dB
 const BANDPASS_FREQ_INITIAL = 400;
@@ -94,28 +88,21 @@ export function createTexture(ctx: AudioContext): TextureNode {
 
   noise.start(ctx.currentTime);
 
-  const freqRamp: RampState = makeRamp(BANDPASS_FREQ_INITIAL);
-  const gainRamp: RampState = makeRamp(TEXTURE_GAIN_BASE);
-
   return {
     output,
     setBandpassFreq(hz: number): void {
       const f = Math.max(50, Math.min(8000, hz));
       const t = ctx.currentTime;
-      const current = currentRampValue(freqRamp, t);
       bandpass.frequency.cancelScheduledValues(t);
-      bandpass.frequency.setValueAtTime(current, t);
+      bandpass.frequency.setValueAtTime(bandpass.frequency.value, t);
       bandpass.frequency.linearRampToValueAtTime(f, t + FREQ_RAMP_SEC);
-      commitRamp(freqRamp, t, t + FREQ_RAMP_SEC, current, f);
     },
     setOutputGain(linear: number): void {
       const g = Math.max(0, Math.min(2, linear)) * TEXTURE_GAIN_BASE;
       const t = ctx.currentTime;
-      const current = currentRampValue(gainRamp, t);
       output.gain.cancelScheduledValues(t);
-      output.gain.setValueAtTime(current, t);
+      output.gain.setValueAtTime(output.gain.value, t);
       output.gain.linearRampToValueAtTime(g, t + GAIN_RAMP_SEC);
-      commitRamp(gainRamp, t, t + GAIN_RAMP_SEC, current, g);
     },
     dispose(): void {
       try {

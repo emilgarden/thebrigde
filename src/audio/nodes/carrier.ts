@@ -10,12 +10,6 @@
  */
 
 import { AudioContext, GainNode } from 'react-native-audio-api';
-import {
-  RampState,
-  commitRamp,
-  currentRampValue,
-  makeRamp,
-} from '../ramp';
 
 const CARRIER_FREQ = 58;
 const CARRIER_GAIN = 0.0224; // -33 dB per spec
@@ -51,18 +45,14 @@ export function createCarrier(ctx: AudioContext): CarrierNode {
   osc.start(now);
   lfo.start(now);
 
-  const freqRamp: RampState = makeRamp(CARRIER_FREQ);
-
   return {
     output,
     setPitchOffset(hz: number): void {
       const t = ctx.currentTime;
       const target = CARRIER_FREQ + hz;
-      const current = currentRampValue(freqRamp, t);
       osc.frequency.cancelScheduledValues(t);
-      osc.frequency.setValueAtTime(current, t);
+      osc.frequency.setValueAtTime(osc.frequency.value, t);
       osc.frequency.linearRampToValueAtTime(target, t + PITCH_RAMP_SEC);
-      commitRamp(freqRamp, t, t + PITCH_RAMP_SEC, current, target);
     },
     dispose(): void {
       try {

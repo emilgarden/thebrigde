@@ -30,12 +30,6 @@
 
 import { AudioContext, GainNode } from 'react-native-audio-api';
 import { speedKmhToPulseLfoHz } from '../modulation';
-import {
-  RampState,
-  commitRamp,
-  currentRampValue,
-  makeRamp,
-} from '../ramp';
 
 const SUB_FREQ = 50;
 const BASE_GAIN = 0.00316; // -50 dB per spec
@@ -76,9 +70,6 @@ export function createSpeedPulse(ctx: AudioContext): SpeedPulseNode {
   subOsc.start(now);
   lfo.start(now);
 
-  const gainRamp: RampState = makeRamp(0);
-  const lfoFreqRamp: RampState = makeRamp(0);
-
   return {
     output,
     setSpeed(kmh: number, hasFix: boolean): void {
@@ -87,27 +78,17 @@ export function createSpeedPulse(ctx: AudioContext): SpeedPulseNode {
 
       const targetGain = active ? 1.0 : 0;
       const rampSec = active ? RAMP_IN_SEC : RAMP_OUT_SEC;
-      const currentGain = currentRampValue(gainRamp, t);
       output.gain.cancelScheduledValues(t);
-      output.gain.setValueAtTime(currentGain, t);
+      output.gain.setValueAtTime(output.gain.value, t);
       output.gain.linearRampToValueAtTime(targetGain, t + rampSec);
-      commitRamp(gainRamp, t, t + rampSec, currentGain, targetGain);
 
       if (active) {
         const targetLfo = speedKmhToPulseLfoHz(kmh);
-        const currentLfo = currentRampValue(lfoFreqRamp, t);
         lfo.frequency.cancelScheduledValues(t);
-        lfo.frequency.setValueAtTime(currentLfo, t);
+        lfo.frequency.setValueAtTime(lfo.frequency.value, t);
         lfo.frequency.linearRampToValueAtTime(
           targetLfo,
           t + LFO_FREQ_RAMP_SEC
-        );
-        commitRamp(
-          lfoFreqRamp,
-          t,
-          t + LFO_FREQ_RAMP_SEC,
-          currentLfo,
-          targetLfo
         );
       }
     },
