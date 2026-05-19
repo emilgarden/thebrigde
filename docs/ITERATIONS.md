@@ -129,16 +129,34 @@ Per CURSOR.md linje 187–217 og IEC 62923-hierarkiet.
 For få? Riktig BAM-nivå? Triggers ved PC (mag-warning forventet),
 heistur (baro-warning forventet), T-bane-passering (mag-alarm).
 
-### Iterasjon 5 — MainScreen (OpenBridge)
+### Iterasjon 5 — MainScreen (OpenBridge)   `[implementert 2026-05-19]`
 
-- Port `bridge-ux-v7.html` til React Native.
-- Bearing-display (Canvas/SVG).
-- Instrumentpaneler.
-- Palett-bytte (auto + manuell).
-- Start/stopp.
+Port av `docs/bridge-ux-v7.html` til React Native.
 
-**Valideres:** spesifikasjonen oversetter rent til native.
-Performance på Canvas/SVG ved ~30 fps.
+- `ui/theme/palettes.ts` — fire OpenBridge-paletter (night/dusk/day/bright)
+  med semantisk faste alarm/warning/nominal-hues.
+- `ui/theme/PaletteContext.tsx` — auto (tid på døgnet) + manuell
+  overstyring, oppdateres hvert minutt i auto-modus.
+- `ui/components/StatusIndicator.tsx` — GPS/Mag/Audio topbar-indikatorer
+  med 3 px BAM-fargestrek.
+- `ui/components/BearingDisplay.tsx` — North-up kompass (react-native-svg):
+  elevation-ringer 30°/60°, gradering, kardinalretninger, heading-
+  indikator. Objekt-plott kommer i Iter 7/8.
+- `ui/components/InstrumentPanel.tsx` — 2×2 grid: Mag, Baro, Motion, Speed
+  med statussøyle, monospace-verdier og progress/speed-skala.
+- `ui/components/EventLogPanel.tsx` — 2-rads event-logg (erstatter strip).
+- `ui/components/SystemMenu.tsx` — palett-velger bak ⚙. Sounds/Onboarding
+  placeholder (Iter 10). Recorder under Developer.
+- `ui/screens/MainScreen.tsx` — samlet primærskjerm + start/stopp.
+- `App.tsx` — bruker MainScreen via PaletteProvider.
+
+**Utsatt fra Iter 5:**
+- Onboarding-overlay og EarconList (Iter 10).
+- Alert-bannere (Kp, floor change visuelt) — events logges allerede.
+- Lyssensor-basert auto-palett (fallback: tid på døgnet).
+
+**Valideres:** layout på fysisk iPhone, palett-bytte, bearing-display
+ytelse, at instrumentverdier oppdateres jevnt.
 
 ---
 

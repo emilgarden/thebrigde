@@ -1,6 +1,6 @@
 # Handoff — Bridge / NST-7
 
-**Sist oppdatert:** 2026-05-19 (sen kveld) · Iter 4 + NST implementert, ikke validert i felt
+**Sist oppdatert:** 2026-05-19 (sen kveld) · Iter 5 MainScreen implementert
 
 Hensikten med dette dokumentet er å gi neste chat-økt nok kontekst til å
 plukke opp arbeidet uten å re-lese hele transkriptet.
@@ -9,20 +9,14 @@ plukke opp arbeidet uten å re-lese hele transkriptet.
 
 ## TL;DR — hvor vi er
 
-Iter 3 er stengt etter scope-revisjon. JS-side ramp-tracking ble
-revertert (commit `7a3a9d7`); lyden er bekreftet "ok nok" i lyttetest
-foran PC — ingen knitring lenger.
+Iter 3–4 er merged til `master`. Iter 5 (MainScreen / OpenBridge UI)
+er implementert i branchen `iter-5-mainscreen` — primærskjermen er
+portert fra `bridge-ux-v7.html` med bearing-display, instrumentpaneler,
+palett-bytte og event-logg.
 
-Iter 4 (Lag 3 — BAM-events) er implementert i branchen `iter-4-events`.
-Tre sensorbaserte triggere er på plass: mag-anomali (alarm + warning)
-og baro-etasjebytte (warning med glissando). NST-sekvenser er også
-implementert som del av Lag 3 (tidsbasert, uavhengig av events).
-Orbital, luftfart og stemme er bevisst utsatt.
-
-**Første jobb i neste chat:** valider Iter 4 i felt — tur i byen med
-PC-passering, heistur, T-bane. Sjekk at events-frekvensen ikke er
-for høy/lav, at debounce holder, og at lydene høres distinkte over
-ambient. Deretter merge til master eller juster tersklene.
+**Første jobb i neste chat:** valider Iter 5 på fysisk iPhone (layout,
+palett-bytte, bearing ytelse). Merge til master. Deretter Iter 6
+(stemme) eller mag-baseline-rekalibrering.
 
 ---
 
@@ -31,18 +25,11 @@ ambient. Deretter merge til master eller juster tersklene.
 Repoet bruker nå commit-disiplin per logisk bunt og branch per iter.
 
 ```
-master            siste stabile (post-Iter 3-revert)
-└─ iter-4-events  pågående — Lag 3 BAM-events
+master               Iter 3–4 merged (Lag 0–3 audio + events + NST)
+└─ iter-5-mainscreen pågående — OpenBridge MainScreen
 
+67f2a73 docs: add NST sequences to Iter 4 spec and handoff
 7a3a9d7 fix(audio): revert JS-side ramp tracking (Iter 3 scope revision)
-6ec9880 chore: snapshot session 2026-05-19 before scope-revision revert
-3252437 Initial commit
-
-På iter-4-events:
-a8cc1a0 feat(audio): add NST sequences (Lag 3 time-based addition)
-38d0ac6 docs: close Iter 3, document Iter 4 implementation
-cb653cb feat(audio,ui): wire Lag 3 events into engine + add log strip
-136db6e feat(audio): add Lag 3 ping engine, BAM scheduler, sensor triggers
 ```
 
 Ingen remote er konfigurert ennå. Hvis backup/multi-device blir
@@ -246,32 +233,32 @@ src/
   state/
     eventLog.ts          [Iter 4] In-memory event-logg
   ui/
+    theme/
+      palettes.ts          [Iter 5] OpenBridge fire paletter
+      PaletteContext.tsx   [Iter 5] Auto/manuell palett
+    screens/
+      MainScreen.tsx       [Iter 5] Primærskjerm
     components/
-      SensorPanel.tsx
-      RecorderBar.tsx
-      EventLogStrip.tsx  [Iter 4] Kompakt 4-rads BAM-strip
+      BearingDisplay.tsx   [Iter 5] North-up kompass (SVG)
+      InstrumentPanel.tsx  [Iter 5] Enkelt instrument
+      StatusIndicator.tsx  [Iter 5] Topbar GPS/Mag/Audio
+      SystemMenu.tsx       [Iter 5] Palett + dev-verktøy
+      EventLogPanel.tsx    [Iter 5] 2-rads event-logg
+      SensorPanel.tsx      Debug (ikke i MainScreen)
+      RecorderBar.tsx      Session-opptak (i system-meny)
 
-App.tsx                  Root — initierer fusion, audio, UI
+App.tsx                  Root — PaletteProvider + MainScreen
 ```
 
 ---
 
 ## Forslag til åpningsmelding i neste chat
 
-> Vi fortsetter Bridge/NST-7. Iter 4 (Lag 3 — både BAM-events og NST-
-> sekvenser) er implementert i branch `iter-4-events` og må valideres i
-> felt. Les `docs/HANDOFF.md` for kontekst og `docs/ITERATIONS.md` for
-> terskler/debounce-vinduer.
+> Vi fortsetter Bridge/NST-7. Iter 5 (MainScreen) er implementert i
+> branch `iter-5-mainscreen`. Les `docs/HANDOFF.md`.
 >
-> Plan for denne økten:
-> 1. Tur i byen med iPhone i lomma (~20 min). Naturlig miks av PC-arbeid,
->    heistur og helst T-bane eller trikk.
-> 2. Underveis: lytt etter NST-sekvenser (skal komme hvert 22–50 s) —
->    er volumet riktig over ambient? For tett/glisne intervaller?
-> 3. Etterpå: gjennomgå events-loggen, juster terskler/debounce/NST-
->    intervall hvis nødvendig, merge til master.
+> Valider på iPhone: layout, palett-bytte (⚙ → Display palette), bearing-
+> display, instrumentoppdatering. Merge til master hvis ok.
 >
-> Konstanter som mest sannsynlig må justeres:
->   - BAM-terskler/debounce: `src/audio/eventTriggers.ts`
->   - NST-intervall:        `src/audio/nstScheduler.ts`
->   - NST-volum:            `src/audio/nodes/nst.ts` (NST_GAIN)
+> Neste etter merge: Iter 6 (stemme) eller mag-baseline-rekalibrering
+> (fase-modul → fusion, adresserer 38.95→60.03 µT drift).
