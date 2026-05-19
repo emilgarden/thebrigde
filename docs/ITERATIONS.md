@@ -129,34 +129,36 @@ Per CURSOR.md linje 187–217 og IEC 62923-hierarkiet.
 For få? Riktig BAM-nivå? Triggers ved PC (mag-warning forventet),
 heistur (baro-warning forventet), T-bane-passering (mag-alarm).
 
-### Iterasjon 5 — MainScreen (OpenBridge)   `[implementert 2026-05-19]`
+### Iterasjon 5 — MainScreen (OpenBridge)   `[validert 2026-05-19]`
 
-Port av `docs/bridge-ux-v7.html` til React Native.
+Port av `docs/bridge-ux-v7.html` til React Native. Baseline: iPhone 13 mini
+(375×812 pt). Branch: `iter-5-mainscreen` (klar for merge til `master`).
 
-- `ui/theme/palettes.ts` — fire OpenBridge-paletter (night/dusk/day/bright)
-  med semantisk faste alarm/warning/nominal-hues.
-- `ui/theme/PaletteContext.tsx` — auto (tid på døgnet) + manuell
-  overstyring, oppdateres hvert minutt i auto-modus.
-- `ui/components/StatusIndicator.tsx` — GPS/Mag/Audio topbar-indikatorer
-  med 3 px BAM-fargestrek.
-- `ui/components/BearingDisplay.tsx` — North-up kompass (react-native-svg):
-  elevation-ringer 30°/60°, gradering, kardinalretninger, heading-
-  indikator. Objekt-plott kommer i Iter 7/8.
-- `ui/components/InstrumentPanel.tsx` — 2×2 grid: Mag, Baro, Motion, Speed
-  med statussøyle, monospace-verdier og progress/speed-skala.
-- `ui/components/EventLogPanel.tsx` — 2-rads event-logg (erstatter strip).
-- `ui/components/SystemMenu.tsx` — palett-velger bak ⚙. Sounds/Onboarding
-  placeholder (Iter 10). Recorder under Developer.
-- `ui/screens/MainScreen.tsx` — samlet primærskjerm + start/stopp.
-- `App.tsx` — bruker MainScreen via PaletteProvider.
+- `ui/theme/palettes.ts` — fire OpenBridge-paletter (night/dusk/day/bright).
+- `ui/theme/PaletteContext.tsx` — auto (tid på døgnet) + manuell overstyring.
+- `ui/theme/openBridgeLayout.ts` — layout-tokens (padding 14, bearing 347).
+- `ui/theme/typography.ts` — Roboto Condensed (UI) + Roboto Mono (data).
+- `ui/components/BearingDisplay.tsx` — north-up kompass med **RN Views**
+  (ikke SVG — unngår native rebuild ved UI-endringer).
+- `ui/components/InstrumentPanel.tsx` — 2×2 grid: Mag, Baro, Motion, Speed.
+- `ui/components/EventLogPanel.tsx` — 2-rads event-logg under bearing.
+- `ui/components/StatusIndicator.tsx` — GPS/Mag/Audio topbar.
+- `ui/components/SystemMenu.tsx` — palett-velger + recorder under Developer.
+- `ui/screens/MainScreen.tsx` — flex-layout uten scroll, safe-area insets.
+- `App.tsx` — `expo-font`, `SafeAreaProvider`, `PaletteProvider`.
+- `docs/DEV.md` — Metro/LAN-oppsett og logging i Cursor.
+
+**Layout-rekkefølge (avviker fra HTML-prototype):** topbar → bearing →
+event-logg → instrumenter → start/stopp. Logg under bearing for plass på
+13 mini.
 
 **Utsatt fra Iter 5:**
 - Onboarding-overlay og EarconList (Iter 10).
 - Alert-bannere (Kp, floor change visuelt) — events logges allerede.
 - Lyssensor-basert auto-palett (fallback: tid på døgnet).
 
-**Valideres:** layout på fysisk iPhone, palett-bytte, bearing-display
-ytelse, at instrumentverdier oppdateres jevnt.
+**Validert:** layout på fysisk iPhone 13 mini, palett-bytte, bearing-
+display, instrumentoppdatering, Metro over LAN.
 
 ---
 

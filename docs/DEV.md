@@ -5,10 +5,16 @@
 `console.log`, `console.warn` og feil fra React Native vises i terminalen der Metro kjører:
 
 ```bash
-npx expo start --dev-client --tunnel
+nvm use 22
+npx expo start --host lan
 ```
 
-Dette er den enkleste måten å se JS-logg i Cursor-miljøet — åpne en integrert terminal og kjør Metro der.
+Mac og iPhone må være på samme WiFi. Dette er den enkleste måten å se
+JS-logg i Cursor — åpne en integrert terminal og kjør Metro **før** appen
+startes.
+
+Hvis splash-rutenettet henger: telefonen finner ikke Metro. Rist →
+Configure Bundler → `DIN_MAC_IP:8081` (finn IP: `ipconfig getifaddr en0`).
 
 ## Native / enhetslogg i Cursor-terminal
 
@@ -55,8 +61,10 @@ xcrun simctl spawn booted log stream --predicate 'processImagePath contains "Bri
 
 | Terminal | Kommando |
 |----------|----------|
-| 1 | `npx expo start --dev-client --tunnel` — JS + hot reload |
+| 1 | `npx expo start --host lan` — JS + hot reload |
 | 2 | `log stream --predicate 'processImagePath contains "Bridge"' --style compact` — native/enhet |
+
+**Xcode-deploy:** bruk USB, ikke trådløs — unngår install-feil (CoreDeviceError 3002).
 
 ## UI-referanse iPhone 13 mini
 

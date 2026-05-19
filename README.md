@@ -3,23 +3,44 @@
 iOS-app som sonifiserer sensordata fra telefonen til ambient lyd.
 Telefon i lomma, lyd på ørepropper. Skjermen er sekundær.
 
+Repo: [github.com/emilgarden/thebrigde](https://github.com/emilgarden/thebrigde)
+
 Se [`docs/CURSOR.md`](./docs/CURSOR.md) for full spesifikasjon og
 [`docs/bridge-ux-v7.html`](./docs/bridge-ux-v7.html) for UI-referanse.
 Iterasjonsplan: [`docs/ITERATIONS.md`](./docs/ITERATIONS.md).
-Utviklerverktøy og logging: [`docs/DEV.md`](./docs/DEV.md).
+Handoff: [`docs/HANDOFF.md`](./docs/HANDOFF.md).
+Utviklerverktøy: [`docs/DEV.md`](./docs/DEV.md).
 
 ---
 
 ## Status
 
-**Iterasjon 0–2 fullført 2026-05-19.** Ambient-lyd (Lag 0–2) spiller
-parallelt over react-native-audio-api. Sensorfusion (magnetometer,
-barometer, akselerometer, GPS) leser kontinuerlig og eksponerer
-`FusedState`. Sensor-panel i appen viser sanntidsverdier.
+**Iterasjon 0–5 implementert (2026-05-19).** Branch `iter-5-mainscreen`
+— klar for merge til `master`.
 
-**Neste:** Iterasjon 3 — kobling fra sensor til lyd. Magnetometer →
-atmosfære-pitch, akselerometer → tekstur-filter, barometer → carrier-
-frekvens, GPS → speed-pulslag (Lag 0+).
+- **Lyd:** Lag 0–3 (carrier, atmosphere, texture, speedPulse, BAM-events,
+  NST-sekvenser) koblet til sensorfusion.
+- **UI:** OpenBridge MainScreen validert på iPhone 13 mini — bearing,
+  instrumenter, event-logg, palett-bytte.
+- **Neste:** merge → Iter 6 (stemme) eller mag-baseline-rekalibrering.
+
+---
+
+## Daglig utvikling
+
+```bash
+nvm use 22
+npm install
+
+# Terminal 1 — Metro (start FØR appen åpnes)
+npx expo start --host lan
+
+# Terminal 2 — valgfritt, native logg
+log stream --predicate 'processImagePath contains "Bridge"' --style compact
+```
+
+Mac og iPhone må være på **samme WiFi**. Hvis splash henger: rist telefonen
+→ Configure Bundler → `DIN_MAC_IP:8081` → Reload.
 
 ---
 
@@ -27,25 +48,25 @@ frekvens, GPS → speed-pulslag (Lag 0+).
 
 ### 1. Verktøykjede
 
-Krever Node 22, Xcode (full IDE) og Cocoapods.
+Krever Node 22, Xcode og Cocoapods.
 
 ```bash
 nvm use 22
-
-# Cocoapods (én gang, globalt)
-brew install cocoapods           # eller: sudo gem install cocoapods
-
-# Xcode lastes fra App Store (~10 GB).
-# Etter installasjon, peker xcode-select til riktig sted:
+brew install cocoapods
 sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
-xcodebuild -runFirstLaunch        # aksepterer lisens, installerer tilleggspakker
+xcodebuild -runFirstLaunch
 ```
 
-### 2. Avhengigheter
+### 2. Avhengigheter og pods
 
 ```bash
 npm install
 cd ios && pod install && cd ..
+```
+
+Ved feil med `expo-font` etter `npm install`:
+```bash
+cd ios && rm -rf Pods Podfile.lock && pod install && cd ..
 ```
 
 ### 3. Build til enhet
@@ -55,43 +76,24 @@ open ios/Bridge.xcworkspace
 ```
 
 I Xcode:
-1. Velg **Bridge**-prosjektet → **Signing & Capabilities**
-2. Velg eget Team (din Apple ID — gratis personlig konto fungerer)
-3. Sett Bundle Identifier til noe unikt (f.eks. `com.dittnavn.bridge`)
-4. Koble til iPhone via USB, velg den som destinasjon
-5. ⌘R for å bygge og kjøre
+1. Koble iPhone med **USB** (ikke bare trådløs)
+2. Velg Team under Signing & Capabilities
+3. Velg fysisk enhet som destinasjon
+4. ⌘R
 
-På telefonen må du første gang godta utvikler-sertifikatet under
-**Settings → General → VPN & Device Management**.
-
-Etter første build kjøres JavaScript-endringer via Metro uten å rebuilde
-native lag:
-
-```bash
-npm start
-```
-
-Native config-endringer (nye permissions, nye native moduler, endringer
-i `app.json` som påvirker Info.plist) krever rebuild via Xcode.
+Etter første native build: JS-endringer lastes via Metro uten rebuild.
+Native moduler (font, safe-area, permissions) krever ny pod install + rebuild.
 
 ---
 
-## Testprosedyre — Iterasjon 0
+## Testprosedyre — grunnleggende
 
-1. Bygg og kjør på fysisk iPhone (simulator ignorerer bakgrunnsregler).
-2. Trykk **Start**. Du skal høre en mild lav tone (58 Hz) som svakt
-   pulserer — tremoloen er bevisst nesten umerkelig.
-3. **Lås skjermen.** Tonen skal fortsette uavbrutt.
-4. Sveip ned kontrollsenter — verifiser at media-widgeten viser at
-   lyd er aktiv.
-5. Skru på lydløs-modus (ringe-bryteren). Tonen skal fortsette
-   (`iosCategory: 'playback'` overstyrer lydløs).
-6. Trykk **Stop**. Tonen fader ut over 0.5 s.
-
-Hvis steg 3 feiler:
-- Sjekk at `UIBackgroundModes` i `ios/Bridge/Info.plist` inneholder `"audio"`.
-- Sjekk at `AudioManager.setAudioSessionOptions({ iosCategory: 'playback' })`
-  faktisk kjøres før `start()`.
+1. Start Metro (`npx expo start --host lan`).
+2. Åpne appen på fysisk iPhone.
+3. Trykk **Start** — hør ambient-tone (58 Hz carrier + lag).
+4. Lås skjermen — lyd fortsetter.
+5. Sjekk instrumentpaneler og event-logg under bearing.
+6. Trykk **Stop** — fade out.
 
 ---
 
@@ -99,32 +101,31 @@ Hvis steg 3 feiler:
 
 ```
 src/
-  audio/
-    engine.ts             AudioContext, masterchain, start/stop
-    nodes/
-      carrier.ts          Lag 0 — 58 Hz sinus + tremolo
-  sensors/                expo-sensors-fusjon (Iter 2)
+  audio/                  Lag 0–3, events, NST, modulation
+  sensors/                Fusion, GPS, mag, baro, accel, gyro, recorder
+  state/                  eventLog
+  ui/
+    theme/                Paletter, layout-tokens, typografi
+    screens/              MainScreen
+    components/           Bearing, instrumenter, event-logg, meny
   orbital/                TLE + satellite.js (Iter 7)
   aviation/               OpenSky (Iter 8)
   voice/                  ElevenLabs cache (Iter 6)
   api/                    NOAA, met.no, NILU (Iter 9)
-  state/                  Global tilstand
-  ui/                     Skjermer, komponenter, paletter (Iter 5)
-  scripts/                Engangs-skript
 
-docs/                     Spesifikasjon + iterasjonsplan
-ios/                      Generert av expo prebuild
+docs/                     Spesifikasjon, iter-plan, handoff, DEV
+ios/                      Generert av expo prebuild (gitignored)
 ```
 
 ---
 
 ## Verktøy
 
-| Verktøy | Versjon | Status |
-|---------|---------|--------|
-| Node    | 22      | `nvm use 22` |
-| Expo SDK | 54     | installert |
-| React Native | 0.81 | installert |
-| react-native-audio-api | 0.12.2 | installert |
-| Xcode | ≥ 15 | **må installeres** |
-| Cocoapods | ≥ 1.15 | **må installeres** |
+| Verktøy | Versjon | Merknad |
+|---------|---------|---------|
+| Node | 22 | `nvm use 22` |
+| Expo SDK | 54 | |
+| React Native | 0.81 | |
+| react-native-audio-api | 0.12.2 | |
+| Xcode | ≥ 15 | USB-deploy anbefalt |
+| Cocoapods | ≥ 1.15 | |
