@@ -10,11 +10,14 @@
  *   • Lag 1  atmosfære ← statisk wet 0.20 (motion er åpenbart, ikke usynlig)
  *   • Lag 2  tekstur   ← log(mag_dev) → bandpass 250–3500 Hz (kontinuerlig,
  *                        ingen fase-gate — magnetfelt er primær usynlig dimensjon)
- * Iter 4: Lag 3 — BAM-events (pinger + glissando).
+ * Iter 4: Lag 3 — BAM-events (pinger + glissando) og NST-sekvenser.
  *   • events-node opprettes ved start, debounce + pattern eies av
  *     eventScheduler, trigger-regler i eventTriggers. Hver tikk evalueres
  *     mag + baro mot terskler og scheduler.tryFire(...) kalles.
  *   • Fyrte hendelser logges i state/eventLog for UI-strip.
+ *   • nst-node + nstScheduler kjører som uavhengig løkke: tilfeldig
+ *     sekvens hvert 22–50 s, panning ±0.3 per sekvens. NST avbrytes
+ *     aldri av sensor-events (CURSOR.md punkt 3).
  *
  * Fase-detektor (`phase.update`) kjøres fortsatt slik at UI får statusvisning.
  * Den brukes ikke til å modulere lyd direkte — flyttes til fusion for
@@ -39,6 +42,8 @@ import { createAtmosphere, AtmosphereNode } from './nodes/atmosphere';
 import { createTexture, TextureNode } from './nodes/texture';
 import { createSpeedPulse, SpeedPulseNode } from './nodes/speedPulse';
 import { createEvents, EventsNode } from './nodes/events';
+import { createNst, NstNode } from './nodes/nst';
+import { createNstScheduler, NstScheduler } from './nstScheduler';
 import {
   createEventScheduler,
   defaultClock,
@@ -74,6 +79,8 @@ let events: EventsNode | null = null;
 let scheduler: EventScheduler | null = null;
 let triggers: EventTriggers | null = null;
 let schedulerUnsubscribe: (() => void) | null = null;
+let nst: NstNode | null = null;
+let nstScheduler: NstScheduler | null = null;
 let sessionConfigured = false;
 
 let modulationIv: ReturnType<typeof setInterval> | null = null;
@@ -177,15 +184,20 @@ export async function start(): Promise<void> {
   texture = createTexture(ctx);
   speedPulse = createSpeedPulse(ctx);
   events = createEvents(ctx);
+  nst = createNst(ctx);
   carrier.output.connect(master);
   atmosphere.output.connect(master);
   texture.output.connect(master);
   speedPulse.output.connect(master);
   events.output.connect(master);
+  nst.output.connect(master);
 
   scheduler = createEventScheduler(events, defaultClock(ctx));
   triggers = createEventTriggers(scheduler);
   schedulerUnsubscribe = scheduler.subscribe((e) => eventLog.record(e));
+
+  nstScheduler = createNstScheduler(nst);
+  nstScheduler.start();
 
   const now = ctx.currentTime;
   master.gain.setValueAtTime(0, now);
@@ -224,6 +236,7 @@ export async function stop(): Promise<void> {
     texture,
     speedPulse,
     events,
+    nst,
   ].filter(
     (
       l
@@ -232,7 +245,8 @@ export async function stop(): Promise<void> {
       | AtmosphereNode
       | TextureNode
       | SpeedPulseNode
-      | EventsNode => l !== null
+      | EventsNode
+      | NstNode => l !== null
   );
 
   currentMaster.gain.cancelScheduledValues(now);
@@ -242,6 +256,10 @@ export async function stop(): Promise<void> {
   if (schedulerUnsubscribe) {
     schedulerUnsubscribe();
     schedulerUnsubscribe = null;
+  }
+  if (nstScheduler) {
+    nstScheduler.stop();
+    nstScheduler = null;
   }
 
   ctx = null;
@@ -253,6 +271,7 @@ export async function stop(): Promise<void> {
   events = null;
   scheduler = null;
   triggers = null;
+  nst = null;
 
   emit(false);
 
