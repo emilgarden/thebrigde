@@ -35,7 +35,7 @@ function fmtTimestamp(ms: number): string {
   return `${d.toLocaleDateString()} ${d.toLocaleTimeString().slice(0, 5)}`;
 }
 
-export default function RecorderBar() {
+export default function RecorderBar({ embedded = false }: { embedded?: boolean }) {
   const [stats, setStats] = useState(recorder.getStats());
   const [past, setPast] = useState<recorder.PastRecording[]>([]);
   const [expanded, setExpanded] = useState(false);
@@ -93,7 +93,7 @@ export default function RecorderBar() {
   };
 
   return (
-    <View style={styles.wrapper}>
+    <View style={[styles.wrapper, embedded && styles.wrapperEmbedded]}>
       <View style={styles.bar}>
         <Pressable
           onPress={onToggle}
@@ -185,6 +185,10 @@ const styles = StyleSheet.create({
     backgroundColor: C.surface,
     borderBottomWidth: 1,
     borderBottomColor: C.border,
+  },
+  wrapperEmbedded: {
+    backgroundColor: 'transparent',
+    borderBottomWidth: 0,
   },
   bar: {
     flexDirection: 'row',
