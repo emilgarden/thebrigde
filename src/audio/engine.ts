@@ -10,6 +10,11 @@
  *   • Lag 1  atmosfære ← statisk wet 0.20 (motion er åpenbart, ikke usynlig)
  *   • Lag 2  tekstur   ← log(mag_dev) → bandpass 250–3500 Hz (kontinuerlig,
  *                        ingen fase-gate — magnetfelt er primær usynlig dimensjon)
+ * Iter 4: Lag 3 — BAM-events (pinger + glissando).
+ *   • events-node opprettes ved start, debounce + pattern eies av
+ *     eventScheduler, trigger-regler i eventTriggers. Hver tikk evalueres
+ *     mag + baro mot terskler og scheduler.tryFire(...) kalles.
+ *   • Fyrte hendelser logges i state/eventLog for UI-strip.
  *
  * Fase-detektor (`phase.update`) kjøres fortsatt slik at UI får statusvisning.
  * Den brukes ikke til å modulere lyd direkte — flyttes til fusion for
@@ -33,6 +38,14 @@ import { createCarrier, CarrierNode } from './nodes/carrier';
 import { createAtmosphere, AtmosphereNode } from './nodes/atmosphere';
 import { createTexture, TextureNode } from './nodes/texture';
 import { createSpeedPulse, SpeedPulseNode } from './nodes/speedPulse';
+import { createEvents, EventsNode } from './nodes/events';
+import {
+  createEventScheduler,
+  defaultClock,
+  EventScheduler,
+} from './eventScheduler';
+import { createEventTriggers, EventTriggers } from './eventTriggers';
+import * as eventLog from '../state/eventLog';
 import * as fusion from '../sensors/fusion';
 import * as phase from './phase';
 import {
@@ -57,6 +70,10 @@ let carrier: CarrierNode | null = null;
 let atmosphere: AtmosphereNode | null = null;
 let texture: TextureNode | null = null;
 let speedPulse: SpeedPulseNode | null = null;
+let events: EventsNode | null = null;
+let scheduler: EventScheduler | null = null;
+let triggers: EventTriggers | null = null;
+let schedulerUnsubscribe: (() => void) | null = null;
 let sessionConfigured = false;
 
 let modulationIv: ReturnType<typeof setInterval> | null = null;
@@ -131,6 +148,10 @@ function modulationTick(): void {
   // gain-ramps og 1 s LFO-freq-ramp som er glatting nok.
   speedPulse.setSpeed(s.speedKmh, s.hasGpsFix);
 
+  // BAM-event-triggere evalueres på samme rate (5 Hz) — debounce
+  // håndteres internt av scheduler.
+  if (triggers) triggers.evaluate(s);
+
   // Fase-detektor kjøres for UI-status. Lyd-kobling er fjernet —
   // motion er åpenbart for bruker og skal ikke styre primær-lagene.
   phase.update(s.motionIntensity);
@@ -155,10 +176,16 @@ export async function start(): Promise<void> {
   atmosphere = createAtmosphere(ctx);
   texture = createTexture(ctx);
   speedPulse = createSpeedPulse(ctx);
+  events = createEvents(ctx);
   carrier.output.connect(master);
   atmosphere.output.connect(master);
   texture.output.connect(master);
   speedPulse.output.connect(master);
+  events.output.connect(master);
+
+  scheduler = createEventScheduler(events, defaultClock(ctx));
+  triggers = createEventTriggers(scheduler);
+  schedulerUnsubscribe = scheduler.subscribe((e) => eventLog.record(e));
 
   const now = ctx.currentTime;
   master.gain.setValueAtTime(0, now);
@@ -191,14 +218,31 @@ export async function stop(): Promise<void> {
   const now = ctx.currentTime;
   const currentMaster = master;
   const currentCtx = ctx;
-  const currentLayers = [carrier, atmosphere, texture, speedPulse].filter(
-    (l): l is CarrierNode | AtmosphereNode | TextureNode | SpeedPulseNode =>
-      l !== null
+  const currentLayers = [
+    carrier,
+    atmosphere,
+    texture,
+    speedPulse,
+    events,
+  ].filter(
+    (
+      l
+    ): l is
+      | CarrierNode
+      | AtmosphereNode
+      | TextureNode
+      | SpeedPulseNode
+      | EventsNode => l !== null
   );
 
   currentMaster.gain.cancelScheduledValues(now);
   currentMaster.gain.setValueAtTime(currentMaster.gain.value, now);
   currentMaster.gain.linearRampToValueAtTime(0, now + FADE_TIME);
+
+  if (schedulerUnsubscribe) {
+    schedulerUnsubscribe();
+    schedulerUnsubscribe = null;
+  }
 
   ctx = null;
   master = null;
@@ -206,6 +250,9 @@ export async function stop(): Promise<void> {
   atmosphere = null;
   texture = null;
   speedPulse = null;
+  events = null;
+  scheduler = null;
+  triggers = null;
 
   emit(false);
 

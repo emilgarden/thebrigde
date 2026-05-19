@@ -23,6 +23,7 @@ import * as fusion from './src/sensors/fusion';
 import * as phase from './src/audio/phase';
 import SensorPanel from './src/ui/components/SensorPanel';
 import RecorderBar from './src/ui/components/RecorderBar';
+import EventLogStrip from './src/ui/components/EventLogStrip';
 
 const KEEP_AWAKE_TAG = 'bridge-audio';
 
@@ -69,11 +70,12 @@ export default function App() {
 
       <View style={styles.topbar}>
         <Text style={styles.sysId}>NST-7</Text>
-        <Text style={styles.iteration}>iter 3</Text>
+        <Text style={styles.iteration}>iter 4</Text>
       </View>
 
       <SensorPanel />
       <RecorderBar />
+      <EventLogStrip />
 
       <View style={styles.center}>
         <Pressable
@@ -98,7 +100,7 @@ export default function App() {
       </View>
 
       <View style={styles.footer}>
-        <Text style={styles.meta}>lag 0–2 · modulert</Text>
+        <Text style={styles.meta}>lag 0–3 · modulert</Text>
         <Text
           style={[
             styles.meta,
