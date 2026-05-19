@@ -51,7 +51,7 @@ ellers ambient. Ingen klikk, loop-søm eller fasekonflikter rapportert.
 5. etasje (rimelig for Oslo), motion ~9.8 m/s² i ro, GPS-fix ok
 (heading mangler i ro — forventet iOS-oppførsel).
 
-### Iterasjon 3 — Sensor → lyd (kontinuerlig) `[implementert 2026-05-19]`
+### Iterasjon 3 — Sensor → lyd (kontinuerlig) `[fullført 2026-05-19]`
 
 Mapping og terskler er datadrevne — se canvas
 `canvases/sensor-trip-analysis.canvas.tsx` for grunnlaget fra opptak
@@ -78,24 +78,49 @@ Nydalen↔Pilestredet 2026-05-19.
 - UI: fase-indikator i footer (`audio · idle` / `audio · active` med
   grønn farge når aktiv).
 
-**Valideres:** *føles* det riktig? Tur i byen, telefon i lomma, ett kvarter.
-Sammenlign opplevd lyd mot tidlige opptak — endrer texture seg merkbart
-ved T-bane vs gange? Reagerer carrier-pitch på heistur?
+**Validert:** Iter 3 stengt 2026-05-19 etter scope-revisjon. JS-side
+ramp-tracking ble revertert (gjorde knitring verre, ikke bedre).
+Lyden er "ok nok" — videre tuning utsettes til etter Iter 4–6 slik at
+balansen kan vurderes mot hele lydbildet.
 
 ---
 
 ## Fase 2 — Hendelser og grensesnitt
 
-### Iterasjon 4 — BAM-events (Lag 3)
+### Iterasjon 4 — BAM-events (Lag 3)   `[implementert 2026-05-19]`
 
-- Ping-motor med envelope og bandpass.
-- Debounce-system per trigger.
-- BAM-mønstre (3-pinger alarm, 2-pinger warning).
-- Magnetisk anomali, etasjebytte, NST-sekvenser.
-- Event-logg (in-memory).
+Per CURSOR.md linje 187–217 og IEC 62923-hierarkiet.
+
+- `audio/nodes/events.ts` — felles ping-motor:
+  - Envelope 6 / 280 / 60 ms (attack/decay/release), eksponentiell
+    decay til near-zero, lineær release til 0.
+  - Bandpass 1400 Hz Q 0.7 (sentert i 800–2400 Hz-båndet).
+  - Alarm 880 Hz @ -18 dB ≈ 0.126. Warning 660 Hz @ -24 dB ≈ 0.063.
+  - `scheduleGlissando(start, end, t)` — 1.5 s frekvensglide brukt
+    etter baro-warning for å indikere retning.
+- `audio/eventScheduler.ts` — BAM-mønstre + debounce-bokføring:
+  - Alarm 3 pinger × 2 repetisjoner, 220 ms inter-ping, 8 s inter-repeat.
+  - Warning 2 pinger, optional glissando 0.5 s etter siste ping.
+  - `tryFire(opts)` returnerer true hvis fyrt, false hvis debounced.
+- `audio/eventTriggers.ts` — kobler `FusedState` til scheduler:
+  - MAG ALARM:   deviation > 40 µT       debounce 14 s
+  - MAG WARNING: deviation 15–40 µT      debounce  8 s
+  - BARO WARNING: |dalt| > 1.5 m sustained 3 s, debounce 12 s,
+                 gliss 700→900 (stigning) eller 700→520 (fall).
+- `state/eventLog.ts` — in-memory ringbuffer (50 entries) + subscribe.
+- `ui/components/EventLogStrip.tsx` — kompakt 4-rads logg-strip med
+  BAM-fargestrek + tidsstempel + melding.
+- Engine: events-node + scheduler + triggers opprettes/dispose-es
+  parallelt med øvrige lag. Triggers evalueres i samme 5 Hz løkke.
+
+**Utsatt fra Iter 4:**
+- NST-sekvenser (tidsbasert, ikke trigget). Egen mini-iter senere.
+- Orbital/luftfart/Kp-triggere (Iter 7–9).
+- Stemme — Iter 6.
 
 **Valideres:** events-frekvens i naturlig bruk. For mange?
-For få? Riktig BAM-nivå?
+For få? Riktig BAM-nivå? Triggers ved PC (mag-warning forventet),
+heistur (baro-warning forventet), T-bane-passering (mag-alarm).
 
 ### Iterasjon 5 — MainScreen (OpenBridge)
 

@@ -1,103 +1,115 @@
 # Handoff — Bridge / NST-7
 
-**Sist oppdatert:** 2026-05-19 (sen kveld) · etter scope-revisjon
+**Sist oppdatert:** 2026-05-19 (sen kveld) · Iter 4 implementert, ikke validert i felt
 
 Hensikten med dette dokumentet er å gi neste chat-økt nok kontekst til å
 plukke opp arbeidet uten å re-lese hele transkriptet.
 
 ---
 
-## TL;DR — ny retning
+## TL;DR — hvor vi er
 
-Etter en runde med detalj-arbeid på modulasjonsløkka (anti-knitring,
-ramp-tracking, smoothing) erkjenner vi at det er **scope creep**.
-Vi har brukt energi på å perfeksjonere kontinuerlig sensor→audio-
-modulasjon før vi vet om infrastrukturen for **events** og **stemme**
-faktisk fungerer.
+Iter 3 er stengt etter scope-revisjon. JS-side ramp-tracking ble
+revertert (commit `7a3a9d7`); lyden er bekreftet "ok nok" i lyttetest
+foran PC — ingen knitring lenger.
 
-**Ny prioritet:** sikre at sensoravlesninger faktisk kan trigge
-distinkte lyder eller stemme-kunngjøringer (Iter 4 → Iter 6).
-Kontinuerlig modulasjon kan være "ok nok" inntil videre — vi tuner
-balansen og smoothing når hele systemet er på plass.
+Iter 4 (Lag 3 — BAM-events) er implementert i branchen `iter-4-events`.
+Tre sensorbaserte triggere er på plass: mag-anomali (alarm + warning)
+og baro-etasjebytte (warning med glissando). NST-sekvenser, orbital og
+luftfart er bevisst utsatt.
 
-**Første jobb i neste chat:** revider eksisterende kode for
-hensiktsmessig scope. Sannsynligvis simplifisere/revertere ting fra
-denne økten før vi går videre.
+**Første jobb i neste chat:** valider Iter 4 i felt — tur i byen med
+PC-passering, heistur, T-bane. Sjekk at events-frekvensen ikke er
+for høy/lav, at debounce holder, og at lydene høres distinkte over
+ambient. Deretter merge til master eller juster tersklene.
+
+---
+
+## Versjonskontroll
+
+Repoet bruker nå commit-disiplin per logisk bunt og branch per iter.
+
+```
+master            siste stabile (post-Iter 3-revert)
+└─ iter-4-events  pågående — Lag 3 BAM-events
+
+7a3a9d7 fix(audio): revert JS-side ramp tracking (Iter 3 scope revision)
+6ec9880 chore: snapshot session 2026-05-19 before scope-revision revert
+3252437 Initial commit
+
+På iter-4-events:
+cb653cb feat(audio,ui): wire Lag 3 events into engine + add log strip
+136db6e feat(audio): add Lag 3 ping engine, BAM scheduler, sensor triggers
+```
+
+Ingen remote er konfigurert ennå. Hvis backup/multi-device blir
+relevant: `git remote add origin <url>` + `git push -u origin master`.
 
 ---
 
 ## Hva som ble gjort i denne økten (2026-05-19, kveld)
 
-### Bunt 1 — Fjernet motarbeidende koblinger (gjennomført)
+### Bunt 1 — Fjernet motarbeidende koblinger (Iter 3-rensk)
 
 Per filosofien "usynlig → hørbart, åpenbart → taust":
 
-- `src/audio/engine.ts`: fjernet `TEXTURE_GAIN_IDLE/ACTIVE` + `onPhaseChange`-
+- `engine.ts`: fjernet `TEXTURE_GAIN_IDLE/ACTIVE` + `onPhaseChange`-
   kobling. Tekstur følger nå mag kontinuerlig uten fase-gate.
-- `src/audio/engine.ts`: fjernet `motionToReverbWet`-kobling. Atmosfærens
-  reverb-wet ligger statisk på 0.20.
-- `src/audio/modulation.ts`: slettet `motionToReverbWet`-funksjonen.
-- `src/audio/nodes/atmosphere.ts`: docstring oppdatert — `setReverbWet`
-  beholdes som API, men er ikke koblet til sensorinngang.
-- `phase.update()` kjøres fortsatt i tikket kun for UI-footer.
-  Skal flyttes til intern bruk i fusion (mag-baseline-rekalibrering).
+- `engine.ts`: fjernet `motionToReverbWet`. Atmosfærens reverb-wet
+  ligger statisk på 0.20.
+- `modulation.ts`: slettet `motionToReverbWet`-funksjonen.
+- `atmosphere.ts`: `setReverbWet` beholdt som API uten kobling.
 
-### Bunt 2 — Speed Pulse (Lag 0+) implementert
+### Bunt 2 — Speed Pulse (Lag 0+)
 
 Per CURSOR.md linje 296–314:
+- 50 Hz sub-sinus modulert av LFO med frekvens `kmh × 0.008` Hz.
+- Output gain ramps 0→1 over 4 s ved fart, 1→0 over 8 s ved GPS-tap.
+- PULSE_DEPTH = 0.7.
 
-- Ny fil `src/audio/nodes/speedPulse.ts`. 50 Hz sub-sinus modulert av
-  LFO med frekvens `kmh × 0.008` Hz. Output gain ramps 0→1 over 4s ved
-  fart, 1→0 over 8s ved GPS-tap / speedKmh=0. PULSE_DEPTH = 0.7.
-- `src/audio/modulation.ts`: ny `speedKmhToPulseLfoHz(kmh)` helper.
-- `src/audio/engine.ts`: speedPulse opprettes/disposes parallelt med
-  øvrige lag, oppdateres hver tikk med `s.speedKmh + s.hasGpsFix`.
+### Bunt 3 — Iter 3 scope-revisjon (revert)
 
-### Anti-knitring (resultat: blandet/forverret)
+- Slettet `src/audio/ramp.ts` (JS-side ramp-tracking).
+- carrier/texture/speedPulse tilbake til opprinnelig mønster:
+  `cancelScheduledValues + setValueAtTime(param.value, t) +
+  linearRampToValueAtTime`.
+- Beholdt mag-EMA α=0.3 (fusion), Q=1.0 (texture), FREQ_RAMP_SEC=1.0
+  (texture) — uavhengig av ramp-hypotesen og dokumentert i kommentarer.
 
-Bruker rapporterte knitring i lyden foran PC. Vi forsøkte tre fikser
-i tur, og det ble verre ved siste:
+Bekreftet i lyttetest: ingen knitring lenger.
 
-1. **Mag-EMA i fusion** (α=0.3 på rå magnitude før deviation regnes) —
-   `src/sensors/fusion.ts`. Liten effekt.
-2. **Bandpass Q 1.7 → 1.0** i `src/audio/nodes/texture.ts`. Liten effekt.
-3. **Bandpass-ramp 0.4s → 1.0s** i `src/audio/nodes/texture.ts`. Liten
-   effekt.
-4. **JS-side ramp-tracking** via ny `src/audio/ramp.ts` (helper) brukt i
-   carrier, texture, speedPulse. **Gjorde det verre** — knitring ble
-   tydeligere.
+### Bunt 4 — Iter 4 implementasjon (Lag 3)
 
-**Konklusjon:** vår hypotese om at `AudioParam.value`-getteren i
-`react-native-audio-api` 0.12.x var stale, stemte sannsynligvis ikke.
-JS-side ramp-tracking innfører nå drift mellom JS-modellen og faktisk
-audio-scheduler. Mest sannsynlig fix: revertere ramp.ts og bruke det
-opprinnelige mønsteret.
+Tre nye moduler + UI:
 
-**Stale-GPS-fix fra forrige sesjon er fortsatt ikke validert.**
+- `audio/nodes/events.ts` — felles ping-motor med envelope + bandpass.
+- `audio/eventScheduler.ts` — BAM-patterns (alarm 3×2, warning 2×1) +
+  debounce per trigger-nøkkel.
+- `audio/eventTriggers.ts` — leser FusedState, fyrer mag-alarm,
+  mag-warning, baro-warning (sustained 3 s).
+- `state/eventLog.ts` — in-memory ringbuffer (50) + subscribe.
+- `ui/components/EventLogStrip.tsx` — kompakt 4-rads strip.
+
+Engine: events opprettes/dispose-es parallelt med øvrige lag.
+Triggers evalueres i 5 Hz modulasjonsløkke.
 
 ---
 
 ## Aktuelt scope-spørsmål for neste chat
 
-Iter-planen ([docs/ITERATIONS.md](./ITERATIONS.md)) sier Iter 3 må føles
-riktig før vi går til Iter 4. Spørsmålet er: **hvor "riktig" er bra nok?**
+Iter 4 må valideres i felt før den merges. Spørsmål som må besvares:
 
-Forslag til prinsipp: Iter 3 er ferdig så snart:
-1. Lagene kan høres uten åpenbare feil (ingen klikk/knitring som
-   distraherer).
-2. Sensor-input påvirker lyden på *en* måte (selv om mappingen ikke er
-   finjustert).
-3. Speed Pulse er hørbar på tur og forsvinner i tunnel.
+1. **Events-frekvens** — er det for mange triggere i naturlig bruk?
+   Mag-warning ved 15 µT kan være for følsomt i støyfylte bymiljøer.
+2. **Debounce** — føles 14 s / 8 s / 12 s riktig, eller er det for kort/langt?
+3. **Hørbarhet** — er pingene tydelige over ambient-lagene uten å være
+   sjokkerende? -18/-24 dB er fra spec, men kan måtte justeres.
+4. **Baro-sustain** — 3 s krever stabil ramp. Heistur fra 1. til 4. etg
+   tar typisk 8–10 s, så det skal trigge. Korte hopp vil ikke. Bra?
 
-Alt utover dette utsettes til etter Iter 4–6 er på plass, slik at
-balansen tunes mot hele lydbildet — ikke et halvt.
-
-Konkret revisjon i neste chat — sannsynlig liste:
-- Revertere `src/audio/ramp.ts` + JS-tracking i carrier/texture/speedPulse,
-  tilbake til opprinnelig `cancelScheduledValues + setValueAtTime(param.value, t)` mønster.
-- Vurdere om mag-EMA + Q-reduksjon + slow ramp i texture skal beholdes
-  som de er, justeres delvis, eller reverteres.
-- Bekrefte at lyden er "ok nok" og gå videre til Iter 4 (events / Lag 3).
+Konkret arbeid hvis triggere må justeres:
+- Tersklene ligger som konstanter øverst i `eventTriggers.ts`.
+- Debounce-vinduer er felter på `FireOptions` i scheduler-kall.
 
 ---
 
@@ -109,9 +121,11 @@ Ren JS-endring trenger ikke Xcode-rebuild.
 
 **Lyd:**
 - Lag 0 (carrier) — 58 Hz sinus + LFO tremolo. Pitch moduleres av baro-delta.
-- Lag 0+ (speedPulse, NY) — 50 Hz sub modulert av kmh-LFO. Untested in lomma.
+- Lag 0+ (speedPulse) — 50 Hz sub modulert av kmh-LFO.
 - Lag 1 (atmosphere) — D4+A4 gjennom syntetisk reverb. Statisk wet.
 - Lag 2 (texture) — pink noise gjennom bandpass. Mag → bandpass-freq.
+- Lag 3 (events) — ping-motor + scheduler + triggers. Mag- og
+  baro-trigget BAM-mønstre.
 
 **Sensorer (`src/sensors/`):**
 - Magnetometer (10-sek baseline + EMA α=0.3 i fusion)
@@ -124,6 +138,9 @@ Ren JS-endring trenger ikke Xcode-rebuild.
 **Recorder (`src/sensors/recorder.ts` + `RecorderBar.tsx`):**
 - 5 Hz sample-rate, ring-buffer + periodiske file-flushes
 - Eksport som JSON, share via systemets Share-API
+
+**State:**
+- `state/eventLog.ts` — derivat av scheduler-output, 50-entries ringbuffer.
 
 ---
 
@@ -143,15 +160,12 @@ Final mix-balanse utsettes til Lag 3–6 er på plass.
 
 ## Avtalte men ikke startede oppgaver
 
-Fra forrige handover — pkt 1, 2, 3 er gjort. Pkt 4 gjenstår:
-
-4. **Bruk fase-modulen internt til mag-baseline-rekalibrering.** Når
+1. **Bruk fase-modulen internt til mag-baseline-rekalibrering.** Når
    `idle` har vart >15 sek, rekalibrer mag-baseline (adresserer
-   driften vi så mellom kontorrunde 1 og 2: 38.95 → 60.03 µT).
-   `phase.update()` kjøres fortsatt i engine for UI — men selve
-   detektoren skal flyttes til fusion og brukes der.
-
-Dette kan godt utsettes til etter scope-revisjon.
+   driften 38.95 → 60.03 µT mellom kontorrunder).
+2. **NST-sekvenser** (Lag 3 tidsbasert tilleggsdel). CURSOR.md
+   linje 359–377 har full spec. Egen mini-iter etter Iter 4-validering.
+3. **MainScreen / OpenBridge UI** — Iter 5.
 
 ---
 
@@ -161,9 +175,9 @@ Tre opptak ligger i `~/Downloads/`:
 
 | Fil | Tid | Innhold | Status |
 |---|---|---|---|
-| `session-2026-05-19_13-29-01.json` | 3:34 | Kontorrunde 1 (heis ned, ut, trapp, ut, heis opp) | Analysert i `iter3-validation.canvas.tsx` |
-| `session-2026-05-19_13-43-00.json` | 4:02 | Kontorrunde 2 (samme rute, 14 min senere) | Analysert i `iter3-validation.canvas.tsx` |
-| `session-2026-05-19_14-06-13.json` | 29:24 | Nydalen-kontor → el-buss → Fredensborg 3. etg | Analysert i `bus-trip-analysis.canvas.tsx` |
+| `session-2026-05-19_13-29-01.json` | 3:34 | Kontorrunde 1 | Analysert i `iter3-validation.canvas.tsx` |
+| `session-2026-05-19_13-43-00.json` | 4:02 | Kontorrunde 2 | Analysert i `iter3-validation.canvas.tsx` |
+| `session-2026-05-19_14-06-13.json` | 29:24 | Nydalen → el-buss → Fredensborg | Analysert i `bus-trip-analysis.canvas.tsx` |
 
 **Nøkkelfunn:**
 - Barometer repeterbart innen 0.1 m mellom runder
@@ -194,15 +208,17 @@ docs/
 
 src/
   audio/
-    engine.ts            Modulasjonsløkke; speedPulse hooked in
+    engine.ts            Modulasjonsløkke; events hooket inn
     phase.ts             Binær idle/active (uendret denne økten)
-    modulation.ts        Pure functions; speedKmhToPulseLfoHz lagt til
-    ramp.ts              [NY denne økten] JS-side ramp-tracking — KANDIDAT FOR REVERT
+    modulation.ts        Pure functions
+    eventScheduler.ts    [Iter 4] BAM-patterns + debounce
+    eventTriggers.ts     [Iter 4] FusedState → scheduler-kall
     nodes/
-      carrier.ts         JS-side ramp-tracking lagt til (sannsynlig revert)
-      atmosphere.ts      Static wet, setReverbWet ikke kalt
-      texture.ts         Q=1.0, ramp=1.0s, JS-side ramp (sannsynlig revert)
-      speedPulse.ts      [NY denne økten] Lag 0+
+      carrier.ts         58 Hz + tremolo + baro-pitch
+      atmosphere.ts      D4+A4 + statisk reverb-wet
+      texture.ts         Pink noise + bandpass styrt av mag
+      speedPulse.ts      [Iter 3] 50 Hz sub modulert av kmh-LFO
+      events.ts          [Iter 4] Ping-motor + glissando
   sensors/
     fusion.ts            Mag-EMA + stale-GPS-override (uvalidert)
     gps.ts               BestForNavigation, 1 Hz
@@ -212,6 +228,13 @@ src/
     gyroscope.ts
     recorder.ts          5 Hz session-opptak
     types.ts             FusedState
+  state/
+    eventLog.ts          [Iter 4] In-memory event-logg
+  ui/
+    components/
+      SensorPanel.tsx
+      RecorderBar.tsx
+      EventLogStrip.tsx  [Iter 4] Kompakt 4-rads BAM-strip
 
 App.tsx                  Root — initierer fusion, audio, UI
 ```
@@ -220,13 +243,15 @@ App.tsx                  Root — initierer fusion, audio, UI
 
 ## Forslag til åpningsmelding i neste chat
 
-> Vi fortsetter Bridge/NST-7. Les `docs/HANDOFF.md` for kontekst.
-> Forrige økt eskalerte i scope rundt anti-knitring (JS-side ramp-
-> tracking) som gjorde lyden verre, ikke bedre. Vi skal nå revidere
-> eksisterende kode mot et hensiktsmessig scope: Iter 3 er ferdig
-> så snart lyden er "ok nok" — vi tuner ikke mer her før event-
-> trigging og stemme (Iter 4–6) er på plass.
+> Vi fortsetter Bridge/NST-7. Iter 4 (Lag 3 BAM-events) er implementert
+> i branch `iter-4-events` og må valideres i felt. Les `docs/HANDOFF.md`
+> for kontekst og `docs/ITERATIONS.md` for terskler/debounce-vinduer.
 >
-> Start med å foreslå hva som bør reverteres (sannsynlig kandidat:
-> `src/audio/ramp.ts` + JS-tracking i carrier/texture/speedPulse).
-> Ikke gjør endringene før jeg har godkjent listen.
+> Plan for denne økten:
+> 1. Tur i byen med iPhone i lomma (~20 min). Naturlig miks av PC-arbeid,
+>    heistur og helst T-bane eller trikk.
+> 2. Etterpå: gjennomgå events-loggen (synlig i app + via recorder-
+>    session), juster terskler/debounce hvis nødvendig, merge til master.
+>
+> Hvis tersklene må endres: konstanter ligger øverst i
+> `src/audio/eventTriggers.ts`.
