@@ -113,8 +113,15 @@ Per CURSOR.md linje 187–217 og IEC 62923-hierarkiet.
 - Engine: events-node + scheduler + triggers opprettes/dispose-es
   parallelt med øvrige lag. Triggers evalueres i samme 5 Hz løkke.
 
+**Lag 3 tilleggsdel — NST-sekvenser** (implementert i samme iter):
+- `audio/nodes/nst.ts` — 4 sekvenser av semitone-offsets fra A4=440 Hz,
+  bandpass 1200 Hz Q 0.8, stereo panning ±0.3 tilfeldig per sekvens.
+  Tone-spacing 420 ms, varighet 160–240 ms tilfeldig per tone, -34 dB.
+- `audio/nstScheduler.ts` — setTimeout-løkke, random intervall 22–50 s.
+  Helt uavhengig av eventScheduler — NST avbrytes aldri av sensor-events
+  (CURSOR.md punkt 3).
+
 **Utsatt fra Iter 4:**
-- NST-sekvenser (tidsbasert, ikke trigget). Egen mini-iter senere.
 - Orbital/luftfart/Kp-triggere (Iter 7–9).
 - Stemme — Iter 6.
 

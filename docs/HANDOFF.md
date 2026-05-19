@@ -1,6 +1,6 @@
 # Handoff — Bridge / NST-7
 
-**Sist oppdatert:** 2026-05-19 (sen kveld) · Iter 4 implementert, ikke validert i felt
+**Sist oppdatert:** 2026-05-19 (sen kveld) · Iter 4 + NST implementert, ikke validert i felt
 
 Hensikten med dette dokumentet er å gi neste chat-økt nok kontekst til å
 plukke opp arbeidet uten å re-lese hele transkriptet.
@@ -15,8 +15,9 @@ foran PC — ingen knitring lenger.
 
 Iter 4 (Lag 3 — BAM-events) er implementert i branchen `iter-4-events`.
 Tre sensorbaserte triggere er på plass: mag-anomali (alarm + warning)
-og baro-etasjebytte (warning med glissando). NST-sekvenser, orbital og
-luftfart er bevisst utsatt.
+og baro-etasjebytte (warning med glissando). NST-sekvenser er også
+implementert som del av Lag 3 (tidsbasert, uavhengig av events).
+Orbital, luftfart og stemme er bevisst utsatt.
 
 **Første jobb i neste chat:** valider Iter 4 i felt — tur i byen med
 PC-passering, heistur, T-bane. Sjekk at events-frekvensen ikke er
@@ -38,6 +39,8 @@ master            siste stabile (post-Iter 3-revert)
 3252437 Initial commit
 
 På iter-4-events:
+a8cc1a0 feat(audio): add NST sequences (Lag 3 time-based addition)
+38d0ac6 docs: close Iter 3, document Iter 4 implementation
 cb653cb feat(audio,ui): wire Lag 3 events into engine + add log strip
 136db6e feat(audio): add Lag 3 ping engine, BAM scheduler, sensor triggers
 ```
@@ -80,7 +83,7 @@ Bekreftet i lyttetest: ingen knitring lenger.
 
 ### Bunt 4 — Iter 4 implementasjon (Lag 3)
 
-Tre nye moduler + UI:
+Tre nye moduler + UI for BAM-events:
 
 - `audio/nodes/events.ts` — felles ping-motor med envelope + bandpass.
 - `audio/eventScheduler.ts` — BAM-patterns (alarm 3×2, warning 2×1) +
@@ -92,6 +95,16 @@ Tre nye moduler + UI:
 
 Engine: events opprettes/dispose-es parallelt med øvrige lag.
 Triggers evalueres i 5 Hz modulasjonsløkke.
+
+### Bunt 5 — NST-sekvenser (Lag 3 tilleggsdel)
+
+- `audio/nodes/nst.ts` — sekvensspiller med bandpass 1200 Hz Q 0.8,
+  StereoPannerNode ±0.3 tilfeldig per sekvens. 4 forhåndsdefinerte
+  semitone-sekvenser fra A4=440 Hz, 420 ms spacing, 160–240 ms
+  tone-varighet, -34 dB.
+- `audio/nstScheduler.ts` — setTimeout-løkke, random 22–50 s intervall.
+- Helt uavhengig av eventScheduler — per CURSOR.md skal NST aldri
+  avbrytes av sensor-events.
 
 ---
 
@@ -126,6 +139,8 @@ Ren JS-endring trenger ikke Xcode-rebuild.
 - Lag 2 (texture) — pink noise gjennom bandpass. Mag → bandpass-freq.
 - Lag 3 (events) — ping-motor + scheduler + triggers. Mag- og
   baro-trigget BAM-mønstre.
+- Lag 3 (NST) — tidsbaserte sinussekvenser med radio-bandpass,
+  random panning, hvert 22–50 s.
 
 **Sensorer (`src/sensors/`):**
 - Magnetometer (10-sek baseline + EMA α=0.3 i fusion)
@@ -163,9 +178,7 @@ Final mix-balanse utsettes til Lag 3–6 er på plass.
 1. **Bruk fase-modulen internt til mag-baseline-rekalibrering.** Når
    `idle` har vart >15 sek, rekalibrer mag-baseline (adresserer
    driften 38.95 → 60.03 µT mellom kontorrunder).
-2. **NST-sekvenser** (Lag 3 tidsbasert tilleggsdel). CURSOR.md
-   linje 359–377 har full spec. Egen mini-iter etter Iter 4-validering.
-3. **MainScreen / OpenBridge UI** — Iter 5.
+2. **MainScreen / OpenBridge UI** — Iter 5.
 
 ---
 
@@ -213,12 +226,14 @@ src/
     modulation.ts        Pure functions
     eventScheduler.ts    [Iter 4] BAM-patterns + debounce
     eventTriggers.ts     [Iter 4] FusedState → scheduler-kall
+    nstScheduler.ts      [Iter 4] Tidsbasert NST-løkke
     nodes/
       carrier.ts         58 Hz + tremolo + baro-pitch
       atmosphere.ts      D4+A4 + statisk reverb-wet
       texture.ts         Pink noise + bandpass styrt av mag
       speedPulse.ts      [Iter 3] 50 Hz sub modulert av kmh-LFO
       events.ts          [Iter 4] Ping-motor + glissando
+      nst.ts             [Iter 4] NST sinus-sekvenser med radio-BP
   sensors/
     fusion.ts            Mag-EMA + stale-GPS-override (uvalidert)
     gps.ts               BestForNavigation, 1 Hz
@@ -243,15 +258,20 @@ App.tsx                  Root — initierer fusion, audio, UI
 
 ## Forslag til åpningsmelding i neste chat
 
-> Vi fortsetter Bridge/NST-7. Iter 4 (Lag 3 BAM-events) er implementert
-> i branch `iter-4-events` og må valideres i felt. Les `docs/HANDOFF.md`
-> for kontekst og `docs/ITERATIONS.md` for terskler/debounce-vinduer.
+> Vi fortsetter Bridge/NST-7. Iter 4 (Lag 3 — både BAM-events og NST-
+> sekvenser) er implementert i branch `iter-4-events` og må valideres i
+> felt. Les `docs/HANDOFF.md` for kontekst og `docs/ITERATIONS.md` for
+> terskler/debounce-vinduer.
 >
 > Plan for denne økten:
 > 1. Tur i byen med iPhone i lomma (~20 min). Naturlig miks av PC-arbeid,
 >    heistur og helst T-bane eller trikk.
-> 2. Etterpå: gjennomgå events-loggen (synlig i app + via recorder-
->    session), juster terskler/debounce hvis nødvendig, merge til master.
+> 2. Underveis: lytt etter NST-sekvenser (skal komme hvert 22–50 s) —
+>    er volumet riktig over ambient? For tett/glisne intervaller?
+> 3. Etterpå: gjennomgå events-loggen, juster terskler/debounce/NST-
+>    intervall hvis nødvendig, merge til master.
 >
-> Hvis tersklene må endres: konstanter ligger øverst i
-> `src/audio/eventTriggers.ts`.
+> Konstanter som mest sannsynlig må justeres:
+>   - BAM-terskler/debounce: `src/audio/eventTriggers.ts`
+>   - NST-intervall:        `src/audio/nstScheduler.ts`
+>   - NST-volum:            `src/audio/nodes/nst.ts` (NST_GAIN)
