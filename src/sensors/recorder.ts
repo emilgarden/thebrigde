@@ -1,0 +1,274 @@
+/**
+ * Sensorrecorder — lagrer FusedState-snapshots til JSON-fil for senere analyse.
+ *
+ * Sampling-rate: 5 Hz (200 ms intervall). Holder en in-memory buffer som
+ * periodisk flushes til fil hvert 30. sekund slik at data ikke går tapt
+ * hvis appen krasjer eller bakgrunns-suspenderes underveis.
+ *
+ * Filer havner i app-sandboxens Documents-mappe og kan deles ut via
+ * `Share.share({ url })` fra UI.
+ */
+
+import { Share } from 'react-native';
+import { Directory, File, Paths } from 'expo-file-system';
+import * as fusion from './fusion';
+import { FusedState } from './types';
+
+const SAMPLE_INTERVAL_MS = 200; // 5 Hz
+const FLUSH_INTERVAL_MS = 30_000;
+
+interface Sample {
+  t: number; // ms siden start
+  mag_mag: number;
+  mag_dev: number;
+  mag_x: number;
+  mag_y: number;
+  mag_z: number;
+  mag_pan: number;
+  baro_p: number;
+  baro_alt: number | null;
+  baro_dalt: number;
+  accel_mag: number;
+  motion_i: number;
+  gyro_mag: number;
+  gyro_x: number;
+  gyro_y: number;
+  gyro_z: number;
+  rotation_i: number;
+  speed: number;
+  speed_kmh: number;
+  heading: number;
+  has_fix: boolean;
+}
+
+let buffer: Sample[] = [];
+let recording = false;
+let startedAt: number | null = null;
+let lastSampleAt = 0;
+let unsubscribe: (() => void) | null = null;
+let flushIv: ReturnType<typeof setInterval> | null = null;
+let file: File | null = null;
+let baselineSnapshot: number | null = null;
+
+const listeners = new Set<() => void>();
+
+function emit(): void {
+  for (const l of listeners) l();
+}
+
+export function subscribe(cb: () => void): () => void {
+  listeners.add(cb);
+  return () => listeners.delete(cb);
+}
+
+function fusedToSample(s: FusedState, t: number): Sample {
+  return {
+    t,
+    mag_mag: s.mag.magnitude,
+    mag_dev: s.magDeviation,
+    mag_x: s.mag.x,
+    mag_y: s.mag.y,
+    mag_z: s.mag.z,
+    mag_pan: s.magPan,
+    baro_p: s.baro.pressure,
+    baro_alt: s.baro.relativeAltitude,
+    baro_dalt: s.altitudeDelta,
+    accel_mag: s.accel.magnitude,
+    motion_i: s.motionIntensity,
+    gyro_mag: s.gyro.magnitude,
+    gyro_x: s.gyro.x,
+    gyro_y: s.gyro.y,
+    gyro_z: s.gyro.z,
+    rotation_i: s.rotationIntensity,
+    speed: s.speed,
+    speed_kmh: s.speedKmh,
+    heading: s.heading,
+    has_fix: s.hasGpsFix,
+  };
+}
+
+function writeFileSync(): void {
+  if (!file || startedAt === null) return;
+  try {
+    const payload = JSON.stringify({
+      version: 1,
+      startedAt: new Date(startedAt).toISOString(),
+      durationMs: Date.now() - startedAt,
+      sampleCount: buffer.length,
+      sampleIntervalMs: SAMPLE_INTERVAL_MS,
+      magBaseline: baselineSnapshot,
+      samples: buffer,
+    });
+    file.write(payload);
+  } catch (e) {
+    console.warn('[recorder] flush feilet:', e);
+  }
+}
+
+export function start(): File {
+  if (recording && file) return file;
+
+  const recordingsDir = new Directory(Paths.document, 'recordings');
+  if (!recordingsDir.exists) {
+    recordingsDir.create({ intermediates: true });
+  }
+
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
+  const filename = `session-${ts}.json`;
+  const newFile = new File(recordingsDir, filename);
+  newFile.create();
+  file = newFile;
+
+  buffer = [];
+  startedAt = Date.now();
+  lastSampleAt = 0;
+  baselineSnapshot = fusion.getState().magBaseline;
+  recording = true;
+
+  unsubscribe = fusion.subscribe((s) => {
+    if (!recording || startedAt === null) return;
+    const now = Date.now() - startedAt;
+    if (now - lastSampleAt < SAMPLE_INTERVAL_MS) return;
+    lastSampleAt = now;
+    buffer.push(fusedToSample(s, now));
+    if (baselineSnapshot === null && s.magBaseline !== null) {
+      baselineSnapshot = s.magBaseline;
+    }
+  });
+
+  writeFileSync();
+  flushIv = setInterval(writeFileSync, FLUSH_INTERVAL_MS);
+
+  console.log('[recorder] opptak startet:', file.uri);
+  emit();
+  return file;
+}
+
+export function stop(): { uri: string; samples: number; duration: number } | null {
+  if (!recording || !file || startedAt === null) return null;
+
+  recording = false;
+  if (flushIv) clearInterval(flushIv);
+  flushIv = null;
+  if (unsubscribe) unsubscribe();
+  unsubscribe = null;
+
+  writeFileSync();
+  const duration = Date.now() - startedAt;
+  const result = { uri: file.uri, samples: buffer.length, duration };
+
+  console.log(
+    '[recorder] opptak ferdig:',
+    result.samples,
+    'samples,',
+    (duration / 1000).toFixed(1),
+    'sek →',
+    file.uri
+  );
+
+  // Skriv hoveddata til Metro-log for direkte inspeksjon
+  console.log('[recorder] summary:', JSON.stringify(summarize()));
+
+  file = null;
+  startedAt = null;
+  emit();
+  return result;
+}
+
+function summarize(): Record<string, unknown> {
+  if (buffer.length === 0) return { sampleCount: 0 };
+
+  const stats = (fn: (s: Sample) => number) => {
+    let min = Infinity;
+    let max = -Infinity;
+    let sum = 0;
+    for (const s of buffer) {
+      const v = fn(s);
+      if (v < min) min = v;
+      if (v > max) max = v;
+      sum += v;
+    }
+    return {
+      min: Number(min.toFixed(3)),
+      max: Number(max.toFixed(3)),
+      avg: Number((sum / buffer.length).toFixed(3)),
+    };
+  };
+
+  return {
+    sampleCount: buffer.length,
+    magBaseline: baselineSnapshot,
+    mag_mag: stats((s) => s.mag_mag),
+    mag_dev: stats((s) => s.mag_dev),
+    baro_p: stats((s) => s.baro_p),
+    baro_dalt: stats((s) => s.baro_dalt),
+    motion_i: stats((s) => s.motion_i),
+    gyro_mag: stats((s) => s.gyro_mag),
+    rotation_i: stats((s) => s.rotation_i),
+    speed_kmh: stats((s) => s.speed_kmh),
+  };
+}
+
+export function isRecording(): boolean {
+  return recording;
+}
+
+export function getStats(): {
+  recording: boolean;
+  duration: number;
+  sampleCount: number;
+  fileUri: string | null;
+} {
+  return {
+    recording,
+    duration: startedAt ? Date.now() - startedAt : 0,
+    sampleCount: buffer.length,
+    fileUri: file?.uri ?? null,
+  };
+}
+
+export async function shareLastFile(uri: string): Promise<void> {
+  try {
+    await Share.share({ url: uri });
+  } catch (e) {
+    console.warn('[recorder] share feilet:', e);
+  }
+}
+
+export interface PastRecording {
+  uri: string;
+  name: string;
+  size: number;
+  modifiedMs: number;
+}
+
+export function listPastRecordings(): PastRecording[] {
+  const dir = new Directory(Paths.document, 'recordings');
+  if (!dir.exists) return [];
+  const entries = dir.list();
+  const results: PastRecording[] = [];
+  for (const e of entries) {
+    if (!(e instanceof File)) continue;
+    if (!e.name.endsWith('.json')) continue;
+    results.push({
+      uri: e.uri,
+      name: e.name,
+      size: e.size ?? 0,
+      modifiedMs: e.modificationTime ?? 0,
+    });
+  }
+  results.sort((a, b) => b.modifiedMs - a.modifiedMs);
+  return results;
+}
+
+export function deleteRecording(uri: string): boolean {
+  try {
+    const f = new File(uri);
+    if (!f.exists) return false;
+    f.delete();
+    return true;
+  } catch (e) {
+    console.warn('[recorder] delete feilet:', e);
+    return false;
+  }
+}

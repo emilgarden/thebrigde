@@ -144,7 +144,9 @@ Lag 4–6 er tilleggslag som introduseres senere: orbital, luftfart og stemme.
 ### Lag 1 — Atmosfære (alltid aktiv)
 - To sinusoscillatorer: D4 (294 Hz) og A4 (440 Hz)
 - Gjennom reverb (decay 4s, wet 0.20)
-- Volum: –46 dB og –50 dB
+- Volum: –38 dB (D4) og –42 dB (A4)
+  — justert opp 8 dB fra opprinnelig spec (–46/–50 dB) etter lyttetest
+  2026-05-19. Spec-nivå var praktisk uhørbart selv med ørepropper.
 - Lavpassfilter: 500 Hz
 - D4 moduleres ±7 Hz av magnetometer-baseline (sakte, over 5–10s)
 
