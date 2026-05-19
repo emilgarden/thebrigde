@@ -6,6 +6,7 @@ Telefon i lomma, lyd på ørepropper. Skjermen er sekundær.
 Se [`docs/CURSOR.md`](./docs/CURSOR.md) for full spesifikasjon og
 [`docs/bridge-ux-v7.html`](./docs/bridge-ux-v7.html) for UI-referanse.
 Iterasjonsplan: [`docs/ITERATIONS.md`](./docs/ITERATIONS.md).
+Utviklerverktøy og logging: [`docs/DEV.md`](./docs/DEV.md).
 
 ---
 

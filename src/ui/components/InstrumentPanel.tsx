@@ -8,6 +8,7 @@ import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { usePalette } from '../theme/PaletteContext';
+import { fonts } from '../theme/typography';
 
 export type InstrumentStatus = 'idle' | 'hi' | 'warn' | 'alarm';
 
@@ -141,18 +142,20 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
   },
   instrLabel: {
+    fontFamily: fonts.uiMedium,
     fontSize: 10,
-    fontWeight: '500',
     letterSpacing: 1,
     textTransform: 'uppercase',
     marginBottom: 5,
   },
   instrVal: {
+    fontFamily: fonts.mono,
     fontSize: 22,
     fontVariant: ['tabular-nums'],
-    lineHeight: 24,
+    lineHeight: 22,
   },
   instrUnit: {
+    fontFamily: fonts.ui,
     fontSize: 11,
     marginLeft: 3,
   },
@@ -187,6 +190,7 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
   speedLabel: {
+    fontFamily: fonts.mono,
     fontSize: 8,
     fontVariant: ['tabular-nums'],
   },

@@ -7,6 +7,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { usePalette } from '../theme/PaletteContext';
+import { fonts } from '../theme/typography';
 
 export type IndicatorState = 'idle' | 'ok' | 'warn' | 'err';
 
@@ -67,8 +68,8 @@ const styles = StyleSheet.create({
     height: 13,
   },
   lbl: {
+    fontFamily: fonts.uiMedium,
     fontSize: 9,
-    fontWeight: '500',
     letterSpacing: 0.6,
     textTransform: 'uppercase',
   },

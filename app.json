@@ -51,7 +51,8 @@
         {
           "locationAlwaysAndWhenInUsePermission": "Bridge bruker posisjon for å beregne satellitt-passeringer og lokal lufttrafikk."
         }
-      ]
+      ],
+      "expo-font"
     ]
   }
 }

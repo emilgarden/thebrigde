@@ -10,9 +10,12 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import type { FiredEvent } from '../../audio/eventScheduler';
 import * as eventLog from '../../state/eventLog';
+import { HORIZONTAL_PAD, LOG_MIN_HEIGHT, LOG_PAD_V } from '../theme/openBridgeLayout';
 import { usePalette } from '../theme/PaletteContext';
+import { fonts } from '../theme/typography';
 
-const VISIBLE_ROWS = 2;
+export const EVENT_LOG_ROW_HEIGHT = 17;
+const DEFAULT_ROWS = 2;
 
 function fmtTime(ms: number): string {
   const d = new Date(ms);
@@ -20,13 +23,18 @@ function fmtTime(ms: number): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
-export default function EventLogPanel(): React.JSX.Element {
+export default function EventLogPanel({
+  maxRows = DEFAULT_ROWS,
+}: {
+  maxRows?: number;
+}): React.JSX.Element {
   const { colors } = usePalette();
   const [entries, setEntries] = useState<FiredEvent[]>([]);
+  const visibleRows = Math.max(DEFAULT_ROWS, maxRows);
 
   useEffect(() => {
-    return eventLog.subscribe((es) => setEntries(es.slice(0, VISIBLE_ROWS)));
-  }, []);
+    return eventLog.subscribe((es) => setEntries(es.slice(0, visibleRows)));
+  }, [visibleRows]);
 
   const rows =
     entries.length === 0
@@ -78,23 +86,26 @@ export default function EventLogPanel(): React.JSX.Element {
 
 const styles = StyleSheet.create({
   log: {
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    minHeight: 54,
+    flex: 1,
+    minHeight: LOG_MIN_HEIGHT,
+    paddingHorizontal: HORIZONTAL_PAD,
+    paddingVertical: LOG_PAD_V,
     borderBottomWidth: 1,
   },
   logRow: {
     flexDirection: 'row',
     gap: 10,
-    lineHeight: 18,
+    lineHeight: 16,
   },
   logTs: {
+    fontFamily: fonts.mono,
     fontSize: 10,
     fontVariant: ['tabular-nums'],
     flexShrink: 0,
     paddingTop: 1,
   },
   logMsg: {
+    fontFamily: fonts.ui,
     fontSize: 12,
     flexShrink: 1,
   },

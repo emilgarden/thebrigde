@@ -1,20 +1,16 @@
 /**
  * MainScreen — primærskjerm (OpenBridge / IEC 62288).
  *
- * Port av bridge-ux-v7.html layout til React Native (Iter 5).
- * Bearing north-up, instrumentpaneler 2×2, statusindikatorer,
- * system-meny med palett-bytte, event-logg og start/stopp.
- *
- * SensorPanel (debug) er fjernet fra primærskjerm — recorder ligger
- * i system-menyen under Developer.
+ * Layout-tokens fra bridge-ux-v7.html, baseline iPhone 13 mini (375×812).
+ * Rekkefølge: topbar → bearing → event-logg → instrumenter → start/stopp.
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
@@ -22,6 +18,7 @@ import {
   activateKeepAwakeAsync,
   deactivateKeepAwake,
 } from 'expo-keep-awake';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   initAudioSession,
@@ -33,6 +30,18 @@ import {
 import * as fusion from '../../sensors/fusion';
 import { FusedState } from '../../sensors/types';
 import { usePalette } from '../theme/PaletteContext';
+import {
+  BEARING_PAD_BOTTOM,
+  BEARING_PAD_TOP,
+  HORIZONTAL_PAD,
+  LOG_MIN_HEIGHT,
+  TOGGLE_PAD_BOTTOM,
+  TOGGLE_PAD_TOP,
+  TOPBAR_PAD_BOTTOM,
+  TOPBAR_PAD_TOP,
+  bearingSizeForWidth,
+} from '../theme/openBridgeLayout';
+import { fonts } from '../theme/typography';
 import BearingDisplay from '../components/BearingDisplay';
 import EventLogPanel from '../components/EventLogPanel';
 import InstrumentPanel, {
@@ -42,6 +51,7 @@ import StatusIndicator, { IndicatorState } from '../components/StatusIndicator';
 import SystemMenu from '../components/SystemMenu';
 
 const KEEP_AWAKE_TAG = 'bridge-audio';
+const LOG_ROWS = 2;
 
 function fmt(n: number, digits = 1): string {
   if (!Number.isFinite(n)) return '—';
@@ -82,6 +92,10 @@ export default function MainScreen({
   onAudioReady,
 }: MainScreenProps): React.JSX.Element {
   const { colors } = usePalette();
+  const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
+  const bearingSize = bearingSizeForWidth(screenWidth);
+
   const [running, setRunning] = useState(isRunning());
   const [menuOpen, setMenuOpen] = useState(false);
   const [s, setS] = useState<FusedState>(fusion.getState());
@@ -162,17 +176,20 @@ export default function MainScreen({
 
       <SystemMenu visible={menuOpen} />
 
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        bounces={false}
-      >
-        <BearingDisplay
-          running={running}
-          heading={s.heading}
-          objectCount={0}
-          onPress={audioReady ? onToggle : undefined}
-        />
+      <View style={styles.body}>
+        <View style={styles.bearingBlock}>
+          <BearingDisplay
+            running={running}
+            heading={s.heading}
+            objectCount={0}
+            size={bearingSize}
+            onPress={audioReady ? onToggle : undefined}
+          />
+        </View>
+
+        <View style={styles.eventLogSlot}>
+          <EventLogPanel maxRows={LOG_ROWS} />
+        </View>
 
         <View
           style={[
@@ -215,9 +232,14 @@ export default function MainScreen({
           </View>
         </View>
 
-        <EventLogPanel />
-
-        <View style={styles.toggleSection}>
+        <View
+          style={[
+            styles.toggleSection,
+            {
+              paddingBottom: Math.max(TOGGLE_PAD_BOTTOM, insets.bottom + 8),
+            },
+          ]}
+        >
           <Pressable
             onPress={onToggle}
             disabled={!audioReady}
@@ -242,7 +264,7 @@ export default function MainScreen({
             </Text>
           </Pressable>
         </View>
-      </ScrollView>
+      </View>
     </View>
   );
 }
@@ -250,20 +272,19 @@ export default function MainScreen({
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    paddingTop: 54,
   },
   topbar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 14,
-    paddingBottom: 9,
-    paddingTop: 10,
+    paddingHorizontal: HORIZONTAL_PAD,
+    paddingTop: TOPBAR_PAD_TOP,
+    paddingBottom: TOPBAR_PAD_BOTTOM,
     borderBottomWidth: 1,
   },
   sysId: {
+    fontFamily: fonts.monoMedium,
     fontSize: 11,
-    fontWeight: '500',
     letterSpacing: 2.8,
     textTransform: 'uppercase',
   },
@@ -275,26 +296,29 @@ const styles = StyleSheet.create({
     fontSize: 14,
     padding: 4,
   },
-  scroll: {
+  body: {
     flex: 1,
+    minHeight: 0,
   },
-  scrollContent: {
-    paddingBottom: 24,
+  bearingBlock: {
+    paddingTop: BEARING_PAD_TOP,
+    paddingBottom: BEARING_PAD_BOTTOM,
+  },
+  eventLogSlot: {
+    flex: 1,
+    minHeight: LOG_MIN_HEIGHT,
   },
   instruments: {
     flexDirection: 'row',
     gap: 1,
-    borderBottomWidth: 1,
-    borderBottomColor: 'transparent',
   },
   instrCol: {
     flex: 1,
     gap: 1,
   },
   toggleSection: {
-    paddingHorizontal: 14,
-    paddingTop: 12,
-    paddingBottom: 20,
+    paddingHorizontal: HORIZONTAL_PAD,
+    paddingTop: TOGGLE_PAD_TOP,
   },
   toggle: {
     width: '100%',
@@ -303,8 +327,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   toggleText: {
+    fontFamily: fonts.uiMedium,
     fontSize: 12,
-    fontWeight: '500',
     letterSpacing: 2,
     textTransform: 'uppercase',
   },
