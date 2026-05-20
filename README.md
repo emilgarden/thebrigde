@@ -15,14 +15,29 @@ Utviklerverktøy: [`docs/DEV.md`](./docs/DEV.md).
 
 ## Status
 
-**Iterasjon 0–5 implementert (2026-05-19).** Branch `iter-5-mainscreen`
-— klar for merge til `master`.
+**Iterasjon 0–5 implementert og validert. Iter 6 påbegynt** (2026-05-20).
+Aktiv branch: `master` (Iter 6 merged).
 
-- **Lyd:** Lag 0–3 (carrier, atmosphere, texture, speedPulse, BAM-events,
-  NST-sekvenser) koblet til sensorfusion.
-- **UI:** OpenBridge MainScreen validert på iPhone 13 mini — bearing,
-  instrumenter, event-logg, palett-bytte.
-- **Neste:** merge → Iter 6 (stemme) eller mag-baseline-rekalibrering.
+- **Lyd:** Lag 0–3 koblet til sensorfusion. Stemme (Lag 6) ikke koblet ennå.
+- **UI:** OpenBridge MainScreen validert på iPhone 13 mini.
+- **Stemme (Mac CLI):** `npm run voice:list|preview|generate` — se
+  [`docs/DEV.md`](./docs/DEV.md). ElevenLabs kalles aldri fra iOS-appen.
+- **Neste:** velg tre stemmer i ElevenLabs → queue/player → event-kobling.
+  Full cache-generering venter til stemmer er låst.
+
+---
+
+## Stemme-cache (Mac, valgfritt)
+
+Krever `ELEVENLABS_API_KEY` i `.env.local`:
+
+```bash
+npm run voice:list                                          # se stemmer
+npm run voice:preview -- --text "bearing" --channel alpha --lang en --voice <id>
+npm run voice:generate -- --langs en,fr,no   # kun etter alle kanaler er satt
+```
+
+Kanaler konfigureres i `scripts/voiceProfiles.json`.
 
 ---
 
@@ -64,9 +79,9 @@ npm install
 cd ios && pod install && cd ..
 ```
 
-Ved feil med `expo-font` etter `npm install`:
+Ved feil med `expo-font` eller stale native pods (f.eks. EXAV etter fjernet modul):
 ```bash
-cd ios && rm -rf Pods Podfile.lock && pod install && cd ..
+cd ios && rm -rf Pods Podfile.lock build && pod install && cd ..
 ```
 
 ### 3. Build til enhet
@@ -104,14 +119,17 @@ src/
   audio/                  Lag 0–3, events, NST, modulation
   sensors/                Fusion, GPS, mag, baro, accel, gyro, recorder
   state/                  eventLog
+  voice/                  Phonetic, assembler, profiles (Iter 6, delvis)
   ui/
     theme/                Paletter, layout-tokens, typografi
     screens/              MainScreen
     components/           Bearing, instrumenter, event-logg, meny
   orbital/                TLE + satellite.js (Iter 7)
   aviation/               OpenSky (Iter 8)
-  voice/                  ElevenLabs cache (Iter 6)
   api/                    NOAA, met.no, NILU (Iter 9)
+
+scripts/                  Mac-only ElevenLabs CLI (Iter 6)
+voice-dev-cache/          Generert TTS-cache (gitignored unntatt manifest)
 
 docs/                     Spesifikasjon, iter-plan, handoff, DEV
 ios/                      Generert av expo prebuild (gitignored)

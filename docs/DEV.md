@@ -92,6 +92,6 @@ prosjektskriptene genererer kun cache-filer til appen.
 2. `npm run voice:list` — se alle tilgjengelige stemmer
 3. Sett kanaler i `scripts/voiceProfiles.json` (alpha / bravo / charlie)
 4. `npm run voice:preview -- --text "bearing" --channel alpha --lang en` — test enkeltfrase
-5. `npm run voice:generate -- --langs en,fr,no` — batch-cache til `voice-dev-cache/`
+5. `npm run voice:generate -- --langs en,fr,no` — batch-cache (kun etter låste stemmer)
 
 API-nøkkel: `.env.local` · Cache: `voice-dev-cache/`

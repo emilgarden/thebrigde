@@ -132,7 +132,8 @@ heistur (baro-warning forventet), T-bane-passering (mag-alarm).
 ### Iterasjon 5 — MainScreen (OpenBridge)   `[validert 2026-05-19]`
 
 Port av `docs/bridge-ux-v7.html` til React Native. Baseline: iPhone 13 mini
-(375×812 pt). Branch: `iter-5-mainscreen` (klar for merge til `master`).
+(375×812 pt). Branch: `iter-5-mainscreen` — validert, **ikke merged til
+`master` ennå** (samme commit `44cfc09`).
 
 - `ui/theme/palettes.ts` — fire OpenBridge-paletter (night/dusk/day/bright).
 - `ui/theme/PaletteContext.tsx` — auto (tid på døgnet) + manuell overstyring.
@@ -164,12 +165,26 @@ display, instrumentoppdatering, Metro over LAN.
 
 ## Fase 3 — Tilleggslag
 
-### Iterasjon 6 — Stemme (Lag 6)
+### Iterasjon 6 — Stemme (Lag 6)   `[påbegynt 2026-05-20]`
 
-- `scripts/generateCache.ts` (kjøres én gang).
-- `voice/` med phonetic, formatter, assembler, queue.
-- ElevenLabs API kun under cache-generering.
-- Koblet til Lag 3-events.
+Branch: `iter-6-voice-lab` (`94f1f53`).
+
+**Implementert:**
+- `scripts/` — Mac CLI: `voice:list`, `voice:preview`, `voice:generate`
+- `scripts/lib/elevenlabs.ts` — TTS (ElevenLabs API kun på Mac)
+- `scripts/voiceProfiles.json` — ALPHA / BRAVO / CHARLIE → voice_id
+- `src/voice/` — phonetic, keywords, profiles, assembler, types
+- `voice-dev-cache/` — generert cache (MP3 gitignored)
+- Minnefix: fusion emit throttle (5 Hz), recorder NDJSON streaming
+
+**Arkitektur:** Voice Lab-dashboard droppet. Stemmer velges i ElevenLabs UI.
+
+**Gjenstår:**
+- Velg/lås tre stemmer i ElevenLabs → `voiceProfiles.json`
+- `voice/queue.ts` — 45 s gap, 5 min cooldown, prioritet
+- `voice/player.ts` — avspilling fra prod-cache i app
+- Kobling til Lag 3-events (mag-anomaly via ALPHA)
+- Full cache-generering og deploy (**etter låste stemmer**)
 
 **Valideres:** stemmekvalitet, latency fra event til lyd, kø-logikk.
 Stemmen avbryter ikke NST-sekvenser.

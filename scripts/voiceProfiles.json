@@ -1,14 +1,14 @@
 {
   "alpha": {
-    "voiceId": "ymDCYd8puC7gYjxIamPt",
-    "label": "Marina — audition (ALPHA)"
+    "voiceId": null,
+    "label": "ALPHA — velg stemme i ElevenLabs"
   },
   "bravo": {
-    "voiceId": "onwK4e9ZLuTAKqWW03F9",
-    "label": "Daniel — audition (BRAVO)"
+    "voiceId": null,
+    "label": "BRAVO — velg stemme i ElevenLabs"
   },
   "charlie": {
-    "voiceId": "SAz9YHcvj6GT2YYXdXww",
-    "label": "River — audition (CHARLIE)"
+    "voiceId": null,
+    "label": "CHARLIE — velg stemme i ElevenLabs"
   }
 }
