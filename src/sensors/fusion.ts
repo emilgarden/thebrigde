@@ -52,8 +52,21 @@ let smoothedMagMagnitude: number | null = null;
 // Barometer baseline for delta-beregning
 let lastBaroPressure: number | null = null;
 
-function emit(): void {
+// Sensorer kan fyre 20–60 Hz, men UI og recorder trenger maks ~5 Hz.
+// Uthrottling her unngår React re-render-storm og minnevekst over lange økter.
+const EMIT_INTERVAL_MS = 200;
+let emitTimer: ReturnType<typeof setTimeout> | null = null;
+
+function emitNow(): void {
   for (const l of listeners) l(state);
+}
+
+function emit(): void {
+  if (emitTimer !== null) return;
+  emitTimer = setTimeout(() => {
+    emitTimer = null;
+    emitNow();
+  }, EMIT_INTERVAL_MS);
 }
 
 function patch(p: Partial<FusedState>): void {
@@ -232,7 +245,11 @@ export function stop(): void {
   smoothedRotation = 0;
   smoothedMagMagnitude = null;
   state = { ...initialFusedState };
-  emit();
+  if (emitTimer !== null) {
+    clearTimeout(emitTimer);
+    emitTimer = null;
+  }
+  emitNow();
 }
 
 export function subscribe(listener: (s: FusedState) => void): () => void {

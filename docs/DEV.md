@@ -80,3 +80,18 @@ Layout-tokens: `src/ui/theme/openBridgeLayout.ts`
 | Event-logg min-høyde | 54 pt |
 
 Test alltid på fysisk 13 mini etter layout-endringer — simulator har litt annerledes safe area.
+
+## Stemme (Mac CLI)
+
+**ElevenLabs kalles aldri fra iOS-appen.** Stemmer velges og testes i ElevenLabs UI;
+prosjektskriptene genererer kun cache-filer til appen.
+
+### Arbeidsflyt
+
+1. Lag/velg stemmer i [ElevenLabs](https://elevenlabs.io) → kopier `voice_id`
+2. `npm run voice:list` — se alle tilgjengelige stemmer
+3. Sett kanaler i `scripts/voiceProfiles.json` (alpha / bravo / charlie)
+4. `npm run voice:preview -- --text "bearing" --channel alpha --lang en` — test enkeltfrase
+5. `npm run voice:generate -- --langs en,fr,no` — batch-cache til `voice-dev-cache/`
+
+API-nøkkel: `.env.local` · Cache: `voice-dev-cache/`

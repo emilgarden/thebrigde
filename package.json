@@ -6,7 +6,10 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "voice:list": "tsx scripts/listVoices.ts",
+    "voice:preview": "tsx scripts/voicePreview.ts",
+    "voice:generate": "tsx scripts/generateCache.ts"
   },
   "dependencies": {
     "@expo-google-fonts/roboto-condensed": "^0.4.2",
@@ -25,6 +28,8 @@
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
+    "dotenv": "^17.4.2",
+    "tsx": "^4.22.3",
     "typescript": "~5.9.2"
   },
   "private": true

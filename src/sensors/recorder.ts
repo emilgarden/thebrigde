@@ -1,16 +1,21 @@
 /**
  * Sensorrecorder — lagrer FusedState-snapshots til JSON-fil for senere analyse.
  *
- * Sampling-rate: 5 Hz (200 ms intervall). Holder en in-memory buffer som
- * periodisk flushes til fil hvert 30. sekund slik at data ikke går tapt
- * hvis appen krasjer eller bakgrunns-suspenderes underveis.
+ * Sampling-rate: 5 Hz (200 ms intervall). Prøver flushes til fil hvert 30. sekund
+ * slik at data ikke går tapt hvis appen krasjer. Format v2 er NDJSON (én sample
+ * per linje) slik at minnebruken forblir flat under lange opptak.
  *
  * Filer havner i app-sandboxens Documents-mappe og kan deles ut via
  * `Share.share({ url })` fra UI.
  */
 
 import { Share } from 'react-native';
-import { Directory, File, Paths } from 'expo-file-system';
+import {
+  Directory,
+  File,
+  FileHandle,
+  Paths,
+} from 'expo-file-system';
 import * as fusion from './fusion';
 import { FusedState } from './types';
 
@@ -41,6 +46,36 @@ interface Sample {
   has_fix: boolean;
 }
 
+type StatKey =
+  | 'mag_mag'
+  | 'mag_dev'
+  | 'baro_p'
+  | 'baro_dalt'
+  | 'motion_i'
+  | 'gyro_mag'
+  | 'rotation_i'
+  | 'speed_kmh';
+
+const STAT_KEYS: StatKey[] = [
+  'mag_mag',
+  'mag_dev',
+  'baro_p',
+  'baro_dalt',
+  'motion_i',
+  'gyro_mag',
+  'rotation_i',
+  'speed_kmh',
+];
+
+interface RunningStat {
+  min: number;
+  max: number;
+  sum: number;
+  count: number;
+}
+
+const encoder = new TextEncoder();
+
 let buffer: Sample[] = [];
 let recording = false;
 let startedAt: number | null = null;
@@ -48,7 +83,11 @@ let lastSampleAt = 0;
 let unsubscribe: (() => void) | null = null;
 let flushIv: ReturnType<typeof setInterval> | null = null;
 let file: File | null = null;
+let handle: FileHandle | null = null;
 let baselineSnapshot: number | null = null;
+let totalSamplesWritten = 0;
+let headerWritten = false;
+const runningStats: Partial<Record<StatKey, RunningStat>> = {};
 
 const listeners = new Set<() => void>();
 
@@ -87,22 +126,61 @@ function fusedToSample(s: FusedState, t: number): Sample {
   };
 }
 
-function writeFileSync(): void {
-  if (!file || startedAt === null) return;
-  try {
-    const payload = JSON.stringify({
-      version: 1,
+function trackSample(sample: Sample): void {
+  for (const key of STAT_KEYS) {
+    const v = sample[key];
+    const st = runningStats[key];
+    if (!st) {
+      runningStats[key] = { min: v, max: v, sum: v, count: 1 };
+      continue;
+    }
+    st.min = Math.min(st.min, v);
+    st.max = Math.max(st.max, v);
+    st.sum += v;
+    st.count += 1;
+  }
+}
+
+function appendText(text: string): void {
+  if (!handle) return;
+  handle.offset = handle.size ?? 0;
+  handle.writeBytes(encoder.encode(text));
+}
+
+function writeHeader(): void {
+  if (!handle || headerWritten || startedAt === null) return;
+  appendText(
+    `${JSON.stringify({
+      version: 2,
+      format: 'ndjson',
       startedAt: new Date(startedAt).toISOString(),
-      durationMs: Date.now() - startedAt,
-      sampleCount: buffer.length,
       sampleIntervalMs: SAMPLE_INTERVAL_MS,
       magBaseline: baselineSnapshot,
-      samples: buffer,
-    });
-    file.write(payload);
-  } catch (e) {
-    console.warn('[recorder] flush feilet:', e);
-  }
+    })}\n`
+  );
+  headerWritten = true;
+}
+
+function flushBufferToDisk(): void {
+  if (!handle || buffer.length === 0) return;
+  writeHeader();
+  const chunk = buffer.splice(0, buffer.length);
+  appendText(`${chunk.map((s) => JSON.stringify(s)).join('\n')}\n`);
+  for (const sample of chunk) trackSample(sample);
+  totalSamplesWritten += chunk.length;
+}
+
+function writeFooter(): void {
+  if (!handle || startedAt === null) return;
+  appendText(
+    `${JSON.stringify({
+      _footer: {
+        durationMs: Date.now() - startedAt,
+        sampleCount: totalSamplesWritten,
+        magBaseline: baselineSnapshot,
+      },
+    })}\n`
+  );
 }
 
 export function start(): File {
@@ -118,11 +196,15 @@ export function start(): File {
   const newFile = new File(recordingsDir, filename);
   newFile.create();
   file = newFile;
+  handle = file.open();
 
   buffer = [];
   startedAt = Date.now();
   lastSampleAt = 0;
   baselineSnapshot = fusion.getState().magBaseline;
+  totalSamplesWritten = 0;
+  headerWritten = false;
+  for (const key of STAT_KEYS) delete runningStats[key];
   recording = true;
 
   unsubscribe = fusion.subscribe((s) => {
@@ -136,8 +218,8 @@ export function start(): File {
     }
   });
 
-  writeFileSync();
-  flushIv = setInterval(writeFileSync, FLUSH_INTERVAL_MS);
+  writeHeader();
+  flushIv = setInterval(flushBufferToDisk, FLUSH_INTERVAL_MS);
 
   console.log('[recorder] opptak startet:', file.uri);
   emit();
@@ -153,9 +235,15 @@ export function stop(): { uri: string; samples: number; duration: number } | nul
   if (unsubscribe) unsubscribe();
   unsubscribe = null;
 
-  writeFileSync();
+  flushBufferToDisk();
+  writeFooter();
+  if (handle) {
+    handle.close();
+    handle = null;
+  }
+
   const duration = Date.now() - startedAt;
-  const result = { uri: file.uri, samples: buffer.length, duration };
+  const result = { uri: file.uri, samples: totalSamplesWritten, duration };
 
   console.log(
     '[recorder] opptak ferdig:',
@@ -166,7 +254,6 @@ export function stop(): { uri: string; samples: number; duration: number } | nul
     file.uri
   );
 
-  // Skriv hoveddata til Metro-log for direkte inspeksjon
   console.log('[recorder] summary:', JSON.stringify(summarize()));
 
   file = null;
@@ -176,36 +263,31 @@ export function stop(): { uri: string; samples: number; duration: number } | nul
 }
 
 function summarize(): Record<string, unknown> {
-  if (buffer.length === 0) return { sampleCount: 0 };
+  if (totalSamplesWritten === 0 && buffer.length === 0) {
+    return { sampleCount: 0 };
+  }
 
-  const stats = (fn: (s: Sample) => number) => {
-    let min = Infinity;
-    let max = -Infinity;
-    let sum = 0;
-    for (const s of buffer) {
-      const v = fn(s);
-      if (v < min) min = v;
-      if (v > max) max = v;
-      sum += v;
-    }
+  const stats = (key: StatKey) => {
+    const st = runningStats[key];
+    if (!st) return { min: 0, max: 0, avg: 0 };
     return {
-      min: Number(min.toFixed(3)),
-      max: Number(max.toFixed(3)),
-      avg: Number((sum / buffer.length).toFixed(3)),
+      min: Number(st.min.toFixed(3)),
+      max: Number(st.max.toFixed(3)),
+      avg: Number((st.sum / st.count).toFixed(3)),
     };
   };
 
   return {
-    sampleCount: buffer.length,
+    sampleCount: totalSamplesWritten,
     magBaseline: baselineSnapshot,
-    mag_mag: stats((s) => s.mag_mag),
-    mag_dev: stats((s) => s.mag_dev),
-    baro_p: stats((s) => s.baro_p),
-    baro_dalt: stats((s) => s.baro_dalt),
-    motion_i: stats((s) => s.motion_i),
-    gyro_mag: stats((s) => s.gyro_mag),
-    rotation_i: stats((s) => s.rotation_i),
-    speed_kmh: stats((s) => s.speed_kmh),
+    mag_mag: stats('mag_mag'),
+    mag_dev: stats('mag_dev'),
+    baro_p: stats('baro_p'),
+    baro_dalt: stats('baro_dalt'),
+    motion_i: stats('motion_i'),
+    gyro_mag: stats('gyro_mag'),
+    rotation_i: stats('rotation_i'),
+    speed_kmh: stats('speed_kmh'),
   };
 }
 
@@ -222,7 +304,7 @@ export function getStats(): {
   return {
     recording,
     duration: startedAt ? Date.now() - startedAt : 0,
-    sampleCount: buffer.length,
+    sampleCount: totalSamplesWritten + buffer.length,
     fileUri: file?.uri ?? null,
   };
 }
